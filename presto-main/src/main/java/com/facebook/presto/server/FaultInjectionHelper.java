@@ -35,24 +35,29 @@ public class FaultInjectionHelper
 
     public synchronized boolean isRouteToSuccess(URI uri)
     {
-        if (uri.getPath().endsWith("1.0.0/status")) {
+        if (uri.getPath().endsWith("status")) {
+            if (uri.getPath().endsWith("1.0.0/status")) {
+                int dice = rand.nextInt(100);
+                return (dice < 0);
+            }
+            else if (uri.getPath().endsWith("1.0.1/status") || uri.getPath().endsWith("1.0.2/status") || uri.getPath().endsWith("1.0.3/status")) {
+                Integer callCount = callCounts.getOrDefault(uri.getPath(), 0);
+                callCounts.put(uri.getPath(), callCount + 1);
+                if (callCount < deterministicFailure.size()) {
+                    return deterministicFailure.get(callCount);
+                }
+                else {
+                    int dice = rand.nextInt(100);
+                    return (dice < 100);
+                }
+            }
+        }
+        else if (uri.getPath().contains("1.0.0/results")) {
             int dice = rand.nextInt(100);
             return (dice < 0);
         }
-        else if (uri.getPath().endsWith("1.0.1/status") || uri.getPath().endsWith("1.0.2/status") || uri.getPath().endsWith("1.0.3/status")) {
-            Integer callCount = callCounts.getOrDefault(uri.getPath(), 0);
-            callCounts.put(uri.getPath(), callCount + 1);
-            if (callCount < deterministicFailure.size()) {
-                return deterministicFailure.get(callCount);
-            }
-            else {
-                int dice = rand.nextInt(100);
-                return (dice < 100);
-            }
-        }
-        else {
-            return true;
-        }
+
+        return true;
     }
 
     private static class MyWrapper

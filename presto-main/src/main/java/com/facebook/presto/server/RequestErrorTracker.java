@@ -144,7 +144,8 @@ public class RequestErrorTracker
         }
 
         // fail the operation, if we have more than X failures in a row and more than Y seconds have passed since the last request
-        if (backoff.failure()) {
+//        if (backoff.failure()) {
+        if (true) {
             // it is weird to mark the task failed locally and then cancel the remote task, but there is no way to tell a remote task that it is failed
             PrestoException exception = new PrestoTransportException(TOO_MANY_REQUESTS_FAILED,
                     fromUri(uri),

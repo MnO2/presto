@@ -15,6 +15,7 @@ package com.facebook.presto.operator;
 
 import com.facebook.airlift.http.client.HttpUriBuilder;
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.server.FaultInjectionHelper;
 import com.facebook.presto.server.remotetask.Backoff;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
@@ -33,6 +34,7 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.io.Closeable;
+import java.net.SocketException;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
@@ -283,6 +285,19 @@ public final class PageBufferClient
 
                 backoff.success();
 
+                FaultInjectionHelper helper = FaultInjectionHelper.getInstance();
+                if (!helper.isRouteToSuccess(uri)) {
+                    String message = format("%s (%s - %s failures, failure duration %s, total failed request time %s)",
+                            WORKER_NODE_ERROR,
+                            uri,
+                            backoff.getFailureCount(),
+                            backoff.getFailureDuration().convertTo(SECONDS),
+                            backoff.getFailureRequestTimeTotal().convertTo(SECONDS));
+                    Throwable t = new PageTransportTimeoutException(fromUri(uri), message, new SocketException("simulated socket error"));
+                    handleFailure(t, resultFuture);
+                    return;
+                }
+
                 List<SerializedPage> pages;
                 boolean pagesAccepted;
                 try {
@@ -383,6 +398,9 @@ public final class PageBufferClient
 
     private synchronized void sendDelete()
     {
+        URI uriBase = asyncPageTransportLocation.orElse(location);
+        URI uri = HttpUriBuilder.uriBuilderFrom(uriBase).appendPath(String.valueOf(token)).build();
+
         ListenableFuture<?> resultFuture = resultClient.abortResults();
         future = resultFuture;
         Futures.addCallback(resultFuture, new FutureCallback<Object>()
@@ -392,6 +410,19 @@ public final class PageBufferClient
             {
                 checkNotHoldsLock(this);
                 backoff.success();
+
+                FaultInjectionHelper helper = FaultInjectionHelper.getInstance();
+                if (!helper.isRouteToSuccess(uri)) {
+                    String message = format("Error closing remote buffer (%s - %s failures, failure duration %s, total failed request time %s)",
+                            location,
+                            backoff.getFailureCount(),
+                            backoff.getFailureDuration().convertTo(SECONDS),
+                            backoff.getFailureRequestTimeTotal().convertTo(SECONDS));
+                    Throwable t = new PrestoException(REMOTE_BUFFER_CLOSE_FAILED, message, new SocketException("simulated socket error"));
+                    handleFailure(t, resultFuture);
+                    return;
+                }
+
                 synchronized (PageBufferClient.this) {
                     closed = true;
                     if (future == resultFuture) {
