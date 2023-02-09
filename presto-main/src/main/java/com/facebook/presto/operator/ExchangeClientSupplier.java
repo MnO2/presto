@@ -17,5 +17,5 @@ import com.facebook.presto.memory.context.LocalMemoryContext;
 
 public interface ExchangeClientSupplier
 {
-    ExchangeClient get(LocalMemoryContext systemMemoryContext);
+    ExchangeClient get(LocalMemoryContext systemMemoryContext, boolean gracefulExchangeClientFailureHandling);
 }

@@ -28,6 +28,8 @@ public interface RemoteTask
 
     String getNodeId();
 
+    boolean getIsLeaf();
+
     TaskInfo getTaskInfo();
 
     TaskStatus getTaskStatus();

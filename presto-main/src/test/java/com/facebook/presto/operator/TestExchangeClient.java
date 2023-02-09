@@ -330,7 +330,8 @@ public class TestExchangeClient
         DataSize bufferCapacity = new DataSize(16, MEGABYTE);
         DataSize maxResponseSize = new DataSize(DEFAULT_MAX_PAGE_SIZE_IN_BYTES, BYTE);
         CountDownLatch countDownLatch = new CountDownLatch(1);
-        MockExchangeRequestProcessor processor = new MockExchangeRequestProcessor(maxResponseSize) {
+        MockExchangeRequestProcessor processor = new MockExchangeRequestProcessor(maxResponseSize)
+        {
             @Override
             public Response handle(Request request)
             {
@@ -557,6 +558,7 @@ public class TestExchangeClient
                 new TestingDriftClient<>(),
                 scheduler,
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                false);
     }
 }

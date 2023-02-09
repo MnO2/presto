@@ -127,7 +127,7 @@ public class ExchangeClientFactory
     }
 
     @Override
-    public ExchangeClient get(LocalMemoryContext systemMemoryContext)
+    public ExchangeClient get(LocalMemoryContext systemMemoryContext, boolean gracefulExchangeClientFailureHandling)
     {
         return new ExchangeClient(
                 maxBufferedBytes,
@@ -141,6 +141,7 @@ public class ExchangeClientFactory
                 driftClient,
                 scheduler,
                 systemMemoryContext,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                gracefulExchangeClientFailureHandling);
     }
 }

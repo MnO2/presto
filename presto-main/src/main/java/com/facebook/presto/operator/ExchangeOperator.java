@@ -23,9 +23,12 @@ import com.facebook.presto.spi.page.PagesSerde;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.split.RemoteSplit;
+import com.google.common.io.Closer;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.Closeable;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -45,7 +48,6 @@ public class ExchangeOperator
         private final PlanNodeId sourceId;
         private final TaskExchangeClientManager taskExchangeClientManager;
         private final PagesSerdeFactory serdeFactory;
-        private ExchangeClient exchangeClient;
         private boolean closed;
 
         public ExchangeOperatorFactory(
@@ -71,15 +73,12 @@ public class ExchangeOperator
         {
             checkState(!closed, "Factory is already closed");
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, ExchangeOperator.class.getSimpleName());
-            if (exchangeClient == null) {
-                exchangeClient = taskExchangeClientManager.createExchangeClient(driverContext.getPipelineContext().localSystemMemoryContext());
-            }
 
             return new ExchangeOperator(
                     operatorContext,
                     sourceId,
                     serdeFactory.createPagesSerde(),
-                    exchangeClient);
+                    taskExchangeClientManager);
         }
 
         @Override
@@ -91,22 +90,23 @@ public class ExchangeOperator
 
     private final OperatorContext operatorContext;
     private final PlanNodeId sourceId;
-    private final ExchangeClient exchangeClient;
+    private ExchangeClient exchangeClient;
     private final PagesSerde serde;
     private ListenableFuture<?> isBlocked = NOT_BLOCKED;
+    private final TaskExchangeClientManager taskExchangeClientManager;
+    private final Closer closer = Closer.create();
 
     public ExchangeOperator(
             OperatorContext operatorContext,
             PlanNodeId sourceId,
             PagesSerde serde,
-            ExchangeClient exchangeClient)
+            TaskExchangeClientManager taskExchangeClientManager)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.sourceId = requireNonNull(sourceId, "sourceId is null");
-        this.exchangeClient = requireNonNull(exchangeClient, "exchangeClient is null");
         this.serde = requireNonNull(serde, "serde is null");
-
-        operatorContext.setInfoSupplier(exchangeClient::getStatus);
+        this.taskExchangeClientManager = requireNonNull(taskExchangeClientManager, "taskExchangeClientManager is null");
+        this.exchangeClient = null;
     }
 
     @Override
@@ -123,6 +123,12 @@ public class ExchangeOperator
         checkArgument(split.getConnectorId().equals(REMOTE_CONNECTOR_ID), "split is not a remote split");
 
         RemoteSplit remoteSplit = (RemoteSplit) split.getConnectorSplit();
+
+        if (exchangeClient == null) {
+            exchangeClient = closer.register(taskExchangeClientManager.createExchangeClient(operatorContext.localSystemMemoryContext(), remoteSplit.getIsLeaf()));
+            operatorContext.setInfoSupplier(exchangeClient::getStatus);
+        }
+
         exchangeClient.addLocation(remoteSplit.getLocation().toURI(), remoteSplit.getRemoteSourceTaskId());
 
         return Optional::empty;
@@ -196,6 +202,11 @@ public class ExchangeOperator
     @Override
     public void close()
     {
-        exchangeClient.close();
+        try {
+            closer.close();
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 }

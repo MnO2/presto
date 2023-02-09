@@ -180,6 +180,8 @@ public class MockRemoteTaskFactory
 
         private final PlanFragment fragment;
 
+        private final boolean isLeaf;
+
         @GuardedBy("this")
         private final Set<PlanNodeId> noMoreSplits = new HashSet<>();
 
@@ -247,6 +249,7 @@ public class MockRemoteTaskFactory
             this.nodeId = requireNonNull(nodeId, "nodeId is null");
             splits.putAll(initialSplits);
             this.nodeStatsTracker = requireNonNull(nodeStatsTracker, "nodeStatsTracker is null");
+            this.isLeaf = false;
             updateTaskStats();
             updateSplitQueueSpace();
         }
@@ -261,6 +264,12 @@ public class MockRemoteTaskFactory
         public String getNodeId()
         {
             return nodeId;
+        }
+
+        @Override
+        public boolean getIsLeaf()
+        {
+            return isLeaf;
         }
 
         @Override
@@ -443,9 +452,9 @@ public class MockRemoteTaskFactory
             noMoreSplits.add(sourceId);
 
             boolean allSourcesComplete = Stream.concat(
-                    fragment.getTableScanSchedulingOrder().stream(),
-                    fragment.getRemoteSourceNodes().stream()
-                            .map(PlanNode::getId))
+                            fragment.getTableScanSchedulingOrder().stream(),
+                            fragment.getRemoteSourceNodes().stream()
+                                    .map(PlanNode::getId))
                     .allMatch(noMoreSplits::contains);
 
             if (allSourcesComplete) {

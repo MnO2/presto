@@ -39,9 +39,9 @@ public class TaskExchangeClientManager
         this.exchangeClients = new ArrayList<>();
     }
 
-    public synchronized ExchangeClient createExchangeClient(LocalMemoryContext systemMemoryContext)
+    public synchronized ExchangeClient createExchangeClient(LocalMemoryContext systemMemoryContext, boolean gracefulExchangeClientFailureHandling)
     {
-        ExchangeClient exchangeClient = supplier.get(systemMemoryContext);
+        ExchangeClient exchangeClient = supplier.get(systemMemoryContext, gracefulExchangeClientFailureHandling);
         exchangeClients.add(exchangeClient);
         return exchangeClient;
     }
