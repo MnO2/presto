@@ -256,6 +256,21 @@ public class Driver
         // determine new splits to add
         Set<ScheduledSplit> newSplits = Sets.difference(newSource.getSplits(), currentTaskSource.getSplits());
 
+        if (allOperators.stream().anyMatch(operator -> operator instanceof HashAggregationOperator)) {
+            if (!newSplits.isEmpty()) {
+                ScheduledSplit newSplit = newSplits.iterator().next();
+                Split split = newSplit.getSplit();
+
+                if (!(split.getConnectorSplit() instanceof RemoteSplit)) {
+                    if (newSplits.size() == 1) {
+                        log.debug("HashAggregationOperator and split is one to one at table scan stage");
+                    } else {
+                        log.debug("HashAggregationOperator and split IS NOT one to one at table scan stage");
+                    }
+                }
+            }
+        }
+
         // add new splits
         SourceOperator sourceOperator = this.sourceOperator.orElseThrow(VerifyException::new);
         for (ScheduledSplit newSplit : newSplits) {
