@@ -644,7 +644,12 @@ public final class SqlStageExecution
                 return false;
             }
         }
-        return stageTaskRecoveryCallback.isPresent() && failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
+        return stageTaskRecoveryCallback.isPresent() && notYetReachFailurePercentage();
+    }
+
+    private synchronized boolean notYetReachFailurePercentage()
+    {
+        return failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
     }
 
     public synchronized boolean noMoreRetry()
@@ -664,7 +669,12 @@ public final class SqlStageExecution
                     .filter(task -> task.getTaskStatus().getState() == TaskState.RUNNING)
                     .filter(HttpRemoteTask::isAllSplitsRun)
                     .collect(toList());
-            return idleRunningHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
+
+            boolean isNoMoreRetry;
+            synchronized (this) {
+                isNoMoreRetry = idleRunningHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && notYetReachFailurePercentage();
+            }
+            return isNoMoreRetry;
         }
     }
 
