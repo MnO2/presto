@@ -20,7 +20,7 @@ import javax.validation.constraints.NotNull;
 
 import java.util.Optional;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 public class ServerConfig
 {
@@ -36,7 +36,7 @@ public class ServerConfig
     private String prestoVersion = getClass().getPackage().getImplementationVersion();
     private String dataSources;
     private boolean includeExceptionInResponse = true;
-    private Duration gracePeriod = new Duration(2, MINUTES);
+    private Duration gracePeriod = new Duration(1, MILLISECONDS);
     private boolean enhancedErrorReporting = true;
     private boolean queryResultsCompressionEnabled = true;
     private Optional<String> poolType = Optional.empty();

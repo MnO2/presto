@@ -93,7 +93,8 @@ public final class SqlStageExecution
             PAGE_TRANSPORT_ERROR.toErrorCode(),
             PAGE_TRANSPORT_TIMEOUT.toErrorCode(),
             REMOTE_TASK_MISMATCH.toErrorCode(),
-            REMOTE_TASK_ERROR.toErrorCode());
+            REMOTE_TASK_ERROR.toErrorCode(),
+            REMOTE_HOST_GONE.toErrorCode());
     private Optional<Set<ErrorCode>> recoveryErrorCodes = Optional.empty();
     private static final int DELAY_NO_MORE_RETRY = 10_000;
     private final Session session;
@@ -144,8 +145,6 @@ public final class SqlStageExecution
     private Optional<StageTaskRecoveryCallback> stageTaskRecoveryCallback = Optional.empty();
     @GuardedBy("this")
     private final AtomicInteger totalRetries = new AtomicInteger();
-    private ThreadLocal<Boolean> noMoreRetries = ThreadLocal.withInitial(() -> false);
-    private ThreadLocal<Long> firstNoMoreRetries = ThreadLocal.withInitial(() -> 0L);
 
     public static SqlStageExecution createSqlStageExecution(
             StageExecutionId stageExecutionId,
@@ -661,9 +660,6 @@ public final class SqlStageExecution
 
     public Set<ErrorCode> getRecoverableErrorCodes()
     {
-        if (recoveryErrorCodes.isPresent()) {
-            return recoveryErrorCodes.get();
-        }
         return DEFAULT_RECOVERABLE_ERROR_CODES;
     }
 
@@ -679,19 +675,7 @@ public final class SqlStageExecution
                     .collect(toList());
             return idleRunningHttpRemoteTasks.size() == allTasks.size();
         }
-        boolean noMoreRetryInternal = noMoreRetryWithFailedTasks();
-        if (!noMoreRetryInternal) {
-            return false;
-        }
-        //delay no more retry decision by a min
-        if (!noMoreRetries.get()) {
-            firstNoMoreRetries.set(System.currentTimeMillis());
-        }
-        noMoreRetries.set(true);
-        if (System.currentTimeMillis() - firstNoMoreRetries.get() >= DELAY_NO_MORE_RETRY) {
-            return true;
-        }
-        return false;
+        return noMoreRetryWithFailedTasks();
     }
 
     private boolean noMoreRetryWithFailedTasks()

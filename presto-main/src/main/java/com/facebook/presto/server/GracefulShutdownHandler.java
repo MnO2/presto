@@ -34,7 +34,6 @@ import java.util.concurrent.TimeoutException;
 
 import static com.facebook.airlift.concurrent.Threads.threadsNamed;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly;
 import static java.lang.Thread.currentThread;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
@@ -105,10 +104,10 @@ public class GracefulShutdownHandler
             else {
                 taskExecutor.gracefulShutdown();
                 long timeBeforeTaskCompletion = System.currentTimeMillis();
-                waitForTasksToComplete();
-                log.info("Wait time for task completion -> %s", System.currentTimeMillis() - timeBeforeTaskCompletion);
+//                waitForTasksToComplete();
+//                log.info("Wait time for task completion -> %s", System.currentTimeMillis() - timeBeforeTaskCompletion);
                 // wait for another grace period for all task states to be observed by the coordinator
-                sleepUninterruptibly(gracePeriod.toMillis(), MILLISECONDS);
+//                sleepUninterruptibly(gracePeriod.toMillis(), MILLISECONDS);
             }
 
             Future<?> shutdownFuture = lifeCycleStopper.submit(() -> {
