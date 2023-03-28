@@ -77,6 +77,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static com.google.common.collect.MoreCollectors.onlyElement;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static io.airlift.units.DataSize.Unit.BYTE;
 import static java.lang.String.format;
@@ -605,6 +606,14 @@ public final class SqlStageExecution
                     try {
                         stageTaskRecoveryCallback.get().recover(taskId);
                         totalRetries.incrementAndGet();
+
+                        HttpRemoteTask failedTask = getAllTasks().stream()
+                                .filter(task -> task.getTaskId().equals(taskId))
+                                .filter(task -> task instanceof HttpRemoteTask)
+                                .map(task -> (HttpRemoteTask) task)
+                                .collect(onlyElement());
+                        failedTask.setIsRetried();
+
                         finishedTasks.add(taskId);
                     }
                     catch (Throwable t) {
@@ -686,7 +695,15 @@ public final class SqlStageExecution
                 .filter(task -> task.getTaskStatus().getState() == TaskState.RUNNING)
                 .filter(HttpRemoteTask::isAllSplitsRun)
                 .collect(toList());
-        return idleRunningHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
+
+        long retriedFailedTaskCount = getAllTasks().stream()
+                .filter(task -> task instanceof HttpRemoteTask)
+                .map(task -> (HttpRemoteTask) task)
+                .filter(task -> task.getTaskStatus().getState() == TaskState.FAILED)
+                .filter(HttpRemoteTask::isRetried)
+                .count();
+
+        return idleRunningHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && retriedFailedTaskCount == failedTasks.size() && failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
     }
 
     private synchronized void updateFinalTaskInfo(TaskInfo finalTaskInfo)
