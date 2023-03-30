@@ -138,7 +138,7 @@ public class TestExchangeClient
 
         ExchangeClient exchangeClient = createExchangeClient(processor, bufferCapacity, maxResponseSize);
 
-        exchangeClient.addLocation(location, TaskId.valueOf("queryid.0.0.0"));
+        exchangeClient.addLocation(location, TaskId.valueOf("queryid.0.0.0"), false);
         exchangeClient.noMoreLocations();
 
         assertFalse(exchangeClient.isClosed());
@@ -173,7 +173,7 @@ public class TestExchangeClient
         processor.addPage(location1, createPage(2));
         processor.addPage(location1, createPage(3));
         processor.setComplete(location1);
-        exchangeClient.addLocation(location1, TaskId.valueOf("foo.0.0.0"));
+        exchangeClient.addLocation(location1, TaskId.valueOf("foo.0.0.0"), false);
 
         assertFalse(exchangeClient.isClosed());
         assertPageEquals(getNextPage(exchangeClient), createPage(1));
@@ -190,7 +190,7 @@ public class TestExchangeClient
         processor.addPage(location2, createPage(5));
         processor.addPage(location2, createPage(6));
         processor.setComplete(location2);
-        exchangeClient.addLocation(location2, TaskId.valueOf("bar.0.0.0"));
+        exchangeClient.addLocation(location2, TaskId.valueOf("bar.0.0.0"), false);
 
         assertFalse(exchangeClient.isClosed());
         assertPageEquals(getNextPage(exchangeClient), createPage(4));
@@ -231,7 +231,7 @@ public class TestExchangeClient
 
         ExchangeClient exchangeClient = createExchangeClient(processor, bufferCapacity, maxResponseSize);
 
-        exchangeClient.addLocation(location, TaskId.valueOf("taskid.0.0.0"));
+        exchangeClient.addLocation(location, TaskId.valueOf("taskid.0.0.0"), false);
         exchangeClient.noMoreLocations();
         assertFalse(exchangeClient.isClosed());
 
@@ -304,7 +304,7 @@ public class TestExchangeClient
 
         ExchangeClient exchangeClient = createExchangeClient(processor, bufferCapacity, maxResponseSize);
 
-        exchangeClient.addLocation(location, TaskId.valueOf("taskid.0.0.0"));
+        exchangeClient.addLocation(location, TaskId.valueOf("taskid.0.0.0"), false);
         exchangeClient.noMoreLocations();
 
         // fetch a page
@@ -361,7 +361,7 @@ public class TestExchangeClient
 
         try (ExchangeClient exchangeClient = createExchangeClient(processor, bufferCapacity, maxResponseSize)) {
             for (int i = 0; i < numLocations; i++) {
-                exchangeClient.addLocation(locations.get(i), TaskId.valueOf("taskid.0.0." + i));
+                exchangeClient.addLocation(locations.get(i), TaskId.valueOf("taskid.0.0." + i), false);
             }
             exchangeClient.noMoreLocations();
             assertFalse(exchangeClient.isClosed());
@@ -428,8 +428,8 @@ public class TestExchangeClient
 
         ExchangeClient exchangeClient = createExchangeClient(processor, bufferCapacity, maxResponseSize);
 
-        exchangeClient.addLocation(location1, taskId1);
-        exchangeClient.addLocation(location2, taskId2);
+        exchangeClient.addLocation(location1, taskId1, false);
+        exchangeClient.addLocation(location2, taskId2, false);
 
         assertEquals(exchangeClient.isClosed(), false);
 
@@ -557,6 +557,7 @@ public class TestExchangeClient
                 new TestingDriftClient<>(),
                 scheduler,
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                false);
     }
 }

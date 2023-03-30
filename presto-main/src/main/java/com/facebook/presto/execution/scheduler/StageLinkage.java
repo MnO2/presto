@@ -35,7 +35,9 @@ public class StageLinkage
     private final ExchangeLocationsConsumer parent;
     private final Set<OutputBufferManager> childOutputBufferManagers;
 
-    public StageLinkage(PlanFragmentId fragmentId, ExchangeLocationsConsumer parent, Set<SqlStageExecution> children)
+    private final boolean isCurrentStageLeaf;
+
+    public StageLinkage(PlanFragmentId fragmentId, ExchangeLocationsConsumer parent, Set<SqlStageExecution> children, boolean isCurrentStageLeaf)
     {
         this.currentStageFragmentId = fragmentId;
         this.parent = parent;
@@ -54,6 +56,7 @@ public class StageLinkage
                     }
                 })
                 .collect(toImmutableSet());
+        this.isCurrentStageLeaf = isCurrentStageLeaf;
     }
 
     public void processScheduleResults(StageExecutionState newState, Set<RemoteTask> newTasks)
@@ -81,7 +84,7 @@ public class StageLinkage
         }
 
         // Add an exchange location to the parent stage for each new task
-        parent.addExchangeLocations(currentStageFragmentId, newTasks, noMoreTasks);
+        parent.addExchangeLocations(currentStageFragmentId, newTasks, noMoreTasks, isCurrentStageLeaf);
 
         if (!childOutputBufferManagers.isEmpty()) {
             // Add an output buffer to the child stages for each new task

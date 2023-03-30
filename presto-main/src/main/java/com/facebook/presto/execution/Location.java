@@ -23,17 +23,25 @@ import static java.util.Objects.requireNonNull;
 public class Location
 {
     private final String location;
+    private final boolean isLeaf;
 
     @JsonCreator
-    public Location(@JsonProperty("location") String location)
+    public Location(@JsonProperty("location") String location, @JsonProperty("is_leaf") boolean isLeaf)
     {
         this.location = requireNonNull(location, "location is null");
+        this.isLeaf = isLeaf;
     }
 
     @JsonProperty
     public String getLocation()
     {
         return location;
+    }
+
+    @JsonProperty
+    public boolean getIsLeaf()
+    {
+        return isLeaf;
     }
 
     // TODO: Remove this once URI is replaced

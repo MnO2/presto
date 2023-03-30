@@ -259,7 +259,7 @@ public class SectionExecutionFactory
             }
         });
 
-        StageLinkage stageLinkage = new StageLinkage(fragmentId, parent, childStageExecutions);
+        StageLinkage stageLinkage = new StageLinkage(fragmentId, parent, childStageExecutions, plan.getFragment().isLeaf());
         StageScheduler stageScheduler = createStageScheduler(
                 splitSourceFactory,
                 session,
@@ -309,6 +309,8 @@ public class SectionExecutionFactory
 
             if (plan.getFragment().isLeaf()) {
                 stageExecution.registerStageTaskRecoveryCallback(taskId -> {
+                    checkArgument(parentStageExecution.isPresent(), "Parent stage execution must exist");
+
                     log.debug("Going to recover task - %s", taskId);
                     HttpRemoteTask remoteTask = stageExecution.getAllTasks().stream()
                             .filter(task -> task.getTaskId().equals(taskId))
@@ -347,6 +349,9 @@ public class SectionExecutionFactory
                             }
                         }
                     }
+
+                    //remove the failed tasks from the ExchangeClient in the parent stage.
+                    parentStageExecution.get().removeRemoteSourceOnFailure(taskId);
                 }, ImmutableSet.of(HOST_SHUTTING_DOWN.toErrorCode()));
             }
 

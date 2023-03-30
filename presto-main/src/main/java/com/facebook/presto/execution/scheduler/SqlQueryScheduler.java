@@ -617,13 +617,13 @@ public class SqlQueryScheduler
                         .withBuffer(new OutputBufferId(0), BROADCAST_PARTITION_ID)
                         .withNoMoreBufferIds();
                 OutputBufferId rootBufferId = getOnlyElement(outputBuffers.getBuffers().keySet());
-                locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations) ->
+                locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations, isRemoteLeafStage) ->
                         updateQueryOutputLocations(queryStateMachine, rootBufferId, tasks, noMoreExchangeLocations);
             }
             else {
                 bucketToPartition = Optional.empty();
                 outputBuffers = createDiscardingOutputBuffers();
-                locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations) -> {};
+                locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations, isRemoteLeafStage) -> {};
             }
 
             int attemptId = attempts.size();

@@ -21,5 +21,5 @@ import java.util.Set;
 
 public interface ExchangeLocationsConsumer
 {
-    void addExchangeLocations(PlanFragmentId fragmentId, Set<RemoteTask> tasks, boolean noMoreExchangeLocations);
+    void addExchangeLocations(PlanFragmentId fragmentId, Set<RemoteTask> tasks, boolean noMoreExchangeLocations, boolean isRemoteLeafStage);
 }

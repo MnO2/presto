@@ -771,7 +771,7 @@ public class PrestoSparkTaskExecutorFactory
         AtomicLong nextSplitId = new AtomicLong();
         shuffleReadInfos.forEach((planNodeId, info) ->
                 result.add(new ScheduledSplit(nextSplitId.getAndIncrement(), planNodeId, new Split(REMOTE_CONNECTOR_ID, new RemoteTransactionHandle(), new RemoteSplit(
-                        new Location(format("batch://%s?shuffleInfo=%s", taskId, shuffleInfoTranslator.createSerializedReadInfo(info))),
+                        new Location(format("batch://%s?shuffleInfo=%s", taskId, shuffleInfoTranslator.createSerializedReadInfo(info)), false),
                         taskId)))));
 
         List<TaskSource> nativeExecutionSources = taskSources.stream().filter(taskSource -> taskSource.getPlanNodeId().equals(root)).collect(Collectors.toList());

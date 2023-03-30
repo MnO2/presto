@@ -582,7 +582,7 @@ class Query
             types = outputInfo.getColumnTypes();
         }
 
-        outputInfo.getBufferLocations().forEach(exchangeClient::addLocation);
+        outputInfo.getBufferLocations().forEach((loc, taskId) -> exchangeClient.addLocation(loc, taskId, false));
         if (outputInfo.isNoMoreBufferLocations()) {
             exchangeClient.noMoreLocations();
         }

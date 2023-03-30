@@ -119,6 +119,8 @@ public final class PageBufferClient
 
     private final Executor pageBufferClientCallbackExecutor;
 
+    private boolean isRemoteLeafStage;
+
     public PageBufferClient(
             RpcShuffleClient resultClient,
             Duration maxErrorDuration,
@@ -127,9 +129,10 @@ public final class PageBufferClient
             Optional<URI> asyncPageTransportLocation,
             ClientCallback clientCallback,
             ScheduledExecutorService scheduler,
-            Executor pageBufferClientCallbackExecutor)
+            Executor pageBufferClientCallbackExecutor,
+            boolean isRemoteLeafStage)
     {
-        this(resultClient, maxErrorDuration, acknowledgePages, location, asyncPageTransportLocation, clientCallback, scheduler, Ticker.systemTicker(), pageBufferClientCallbackExecutor);
+        this(resultClient, maxErrorDuration, acknowledgePages, location, asyncPageTransportLocation, clientCallback, scheduler, Ticker.systemTicker(), pageBufferClientCallbackExecutor, isRemoteLeafStage);
     }
 
     public PageBufferClient(
@@ -141,7 +144,8 @@ public final class PageBufferClient
             ClientCallback clientCallback,
             ScheduledExecutorService scheduler,
             Ticker ticker,
-            Executor pageBufferClientCallbackExecutor)
+            Executor pageBufferClientCallbackExecutor,
+            boolean isRemoteLeafStage)
     {
         this.resultClient = requireNonNull(resultClient, "resultClient is null");
         this.acknowledgePages = acknowledgePages;
@@ -153,6 +157,7 @@ public final class PageBufferClient
         requireNonNull(maxErrorDuration, "maxErrorDuration is null");
         requireNonNull(ticker, "ticker is null");
         this.backoff = new Backoff(maxErrorDuration, ticker);
+        this.isRemoteLeafStage = isRemoteLeafStage;
     }
 
     public synchronized PageBufferClientStatus getStatus()

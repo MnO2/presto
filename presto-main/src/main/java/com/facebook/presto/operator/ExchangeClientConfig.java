@@ -40,6 +40,8 @@ public class ExchangeClientConfig
     private double responseSizeExponentialMovingAverageDecayingAlpha = 0.1;
     private boolean asyncPageTransportEnabled = true;
 
+    private boolean isLeafLevelRecoverabilityEnabled = true;
+
     @NotNull
     public DataSize getMaxBufferSize()
     {
@@ -180,6 +182,19 @@ public class ExchangeClientConfig
     public ExchangeClientConfig setAsyncPageTransportEnabled(boolean asyncPageTransportEnabled)
     {
         this.asyncPageTransportEnabled = asyncPageTransportEnabled;
+        return this;
+    }
+
+    public boolean isLeafLevelRecoverabilityEnabled()
+    {
+        return isLeafLevelRecoverabilityEnabled;
+    }
+
+
+    @Config("exchange.is-leaf-level-recoverability-enabled")
+    public ExchangeClientConfig setLeafLevelRecoverabilityEnabled(boolean isLeafLevelRecoverabilityEnabled)
+    {
+        this.isLeafLevelRecoverabilityEnabled = isLeafLevelRecoverabilityEnabled;
         return this;
     }
 }

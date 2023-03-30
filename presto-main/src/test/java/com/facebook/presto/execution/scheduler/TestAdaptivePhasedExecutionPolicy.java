@@ -141,7 +141,7 @@ public class TestAdaptivePhasedExecutionPolicy
                 new NoOpFailureDetector(),
                 new SplitSchedulerStats(),
                 new TableWriteInfo(Optional.empty(), Optional.empty(), Optional.empty()));
-        StageLinkage stageLinkage = new StageLinkage(fragmentId, (id, tasks, noMoreExchangeLocations) -> {}, ImmutableSet.of());
+        StageLinkage stageLinkage = new StageLinkage(fragmentId, (id, tasks, noMoreExchangeLocations, isRemoteLeafStage) -> {}, ImmutableSet.of(), false);
         StageScheduler stageScheduler = new FixedCountScheduler(stageExecution, ImmutableList.of());
         StageExecutionAndScheduler scheduler = new StageExecutionAndScheduler(stageExecution, stageLinkage, stageScheduler);
         return scheduler;

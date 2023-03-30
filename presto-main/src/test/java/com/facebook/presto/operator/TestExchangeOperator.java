@@ -97,7 +97,8 @@ public class TestExchangeOperator
                 new TestingDriftClient<>(),
                 scheduler,
                 systemMemoryUsageListener,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                false);
     }
 
     @AfterClass(alwaysRun = true)
@@ -147,7 +148,7 @@ public class TestExchangeOperator
 
     private static Split newRemoteSplit(String taskId)
     {
-        return new Split(REMOTE_CONNECTOR_ID, new RemoteTransactionHandle(), new RemoteSplit(new Location("http://localhost/" + taskId), TaskId.valueOf(taskId)));
+        return new Split(REMOTE_CONNECTOR_ID, new RemoteTransactionHandle(), new RemoteSplit(new Location("http://localhost/" + taskId, false), TaskId.valueOf(taskId)));
     }
 
     @Test

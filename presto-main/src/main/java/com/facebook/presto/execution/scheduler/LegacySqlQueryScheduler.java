@@ -242,7 +242,7 @@ public class LegacySqlQueryScheduler
         OutputBufferId rootBufferId = getOnlyElement(rootOutputBuffers.getBuffers().keySet());
         List<StageExecutionAndScheduler> stageExecutions = createStageExecutions(
                 sectionExecutionFactory,
-                (fragmentId, tasks, noMoreExchangeLocations) -> updateQueryOutputLocations(queryStateMachine, rootBufferId, tasks, noMoreExchangeLocations),
+                (fragmentId, tasks, noMoreExchangeLocations, isRemoteLeafStage) -> updateQueryOutputLocations(queryStateMachine, rootBufferId, tasks, noMoreExchangeLocations),
                 sectionedPlan,
                 Optional.of(new int[1]),
                 rootOutputBuffers,
@@ -339,7 +339,7 @@ public class LegacySqlQueryScheduler
         ImmutableList.Builder<StageExecutionAndScheduler> stages = ImmutableList.builder();
 
         for (StreamingPlanSection childSection : section.getChildren()) {
-            ExchangeLocationsConsumer childLocationsConsumer = (fragmentId, tasks, noMoreExchangeLocations) -> {};
+            ExchangeLocationsConsumer childLocationsConsumer = (fragmentId, tasks, noMoreExchangeLocations, isRemoteLeafStage) -> {};
             stages.addAll(createStageExecutions(
                     sectionExecutionFactory,
                     childLocationsConsumer,
@@ -652,13 +652,13 @@ public class LegacySqlQueryScheduler
                     .withBuffer(new OutputBufferId(0), BROADCAST_PARTITION_ID)
                     .withNoMoreBufferIds();
             OutputBufferId rootBufferId = getOnlyElement(outputBuffers.getBuffers().keySet());
-            locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations) ->
+            locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations, isRemoteLeafStage) ->
                     updateQueryOutputLocations(queryStateMachine, rootBufferId, tasks, noMoreExchangeLocations);
         }
         else {
             bucketToPartition = Optional.empty();
             outputBuffers = createDiscardingOutputBuffers();
-            locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations) -> {};
+            locationsConsumer = (fragmentId, tasks, noMoreExchangeLocations, isRemoteLeafStage) -> {};
         }
         SectionExecution sectionExecution = sectionExecutionFactory.createSectionExecutions(
                 session,

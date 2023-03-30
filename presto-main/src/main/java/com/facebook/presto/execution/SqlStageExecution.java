@@ -133,6 +133,7 @@ public final class SqlStageExecution
 
     @GuardedBy("this")
     private final Multimap<PlanNodeId, RemoteTask> sourceTasks = HashMultimap.create();
+    private boolean sourceTasksFromLeafStage = false;
     @GuardedBy("this")
     private final Set<PlanNodeId> completeSources = newConcurrentHashSet();
     @GuardedBy("this")
@@ -379,7 +380,7 @@ public final class SqlStageExecution
                 .collect(toImmutableList());
     }
 
-    public synchronized void addExchangeLocations(PlanFragmentId fragmentId, Set<RemoteTask> sourceTasks, boolean noMoreExchangeLocations)
+    public synchronized void addExchangeLocations(PlanFragmentId fragmentId, Set<RemoteTask> sourceTasks, boolean noMoreExchangeLocations, boolean isRemoteLeafStage)
     {
         requireNonNull(fragmentId, "fragmentId is null");
         requireNonNull(sourceTasks, "sourceTasks is null");
@@ -388,12 +389,13 @@ public final class SqlStageExecution
         checkArgument(remoteSource != null, "Unknown remote source %s. Known sources are %s", fragmentId, exchangeSources.keySet());
 
         this.sourceTasks.putAll(remoteSource.getId(), sourceTasks);
+        this.sourceTasksFromLeafStage = isRemoteLeafStage;
 
         for (RemoteTask task : getAllTasks()) {
             ImmutableMultimap.Builder<PlanNodeId, Split> newSplits = ImmutableMultimap.builder();
             for (RemoteTask sourceTask : sourceTasks) {
                 TaskStatus sourceTaskStatus = sourceTask.getTaskStatus();
-                newSplits.put(remoteSource.getId(), createRemoteSplitFor(task.getTaskId(), sourceTask.getRemoteTaskLocation(), sourceTask.getTaskId()));
+                newSplits.put(remoteSource.getId(), createRemoteSplitFor(task.getTaskId(), sourceTask.getRemoteTaskLocation(), sourceTask.getTaskId(), isRemoteLeafStage));
             }
             task.addSplits(newSplits.build());
         }
@@ -468,6 +470,11 @@ public final class SqlStageExecution
         getOnlyElement(allTasks).removeRemoteSource(remoteSourceTaskId);
     }
 
+    public void removeRemoteSourceOnFailure(TaskId remoteSourceTaskId)
+    {
+        getAllTasks().forEach(t -> t.removeRemoteSource(remoteSourceTaskId));
+    }
+
     public synchronized Optional<RemoteTask> scheduleTask(InternalNode node, int partition)
     {
         requireNonNull(node, "node is null");
@@ -528,7 +535,7 @@ public final class SqlStageExecution
         sourceTasks.forEach((planNodeId, task) -> {
             TaskStatus status = task.getTaskStatus();
             if (status.getState() != TaskState.FINISHED) {
-                initialSplits.put(planNodeId, createRemoteSplitFor(taskId, task.getRemoteTaskLocation(), task.getTaskId()));
+                initialSplits.put(planNodeId, createRemoteSplitFor(taskId, task.getRemoteTaskLocation(), task.getTaskId(), sourceTasksFromLeafStage));
             }
         });
 
@@ -576,11 +583,11 @@ public final class SqlStageExecution
         stateMachine.recordGetSplitTime(start);
     }
 
-    private static Split createRemoteSplitFor(TaskId taskId, URI remoteSourceTaskLocation, TaskId remoteSourceTaskId)
+    private static Split createRemoteSplitFor(TaskId taskId, URI remoteSourceTaskLocation, TaskId remoteSourceTaskId, boolean remoteIsLeafStage)
     {
         // Fetch the results from the buffer assigned to the task based on id
         String splitLocation = remoteSourceTaskLocation.toASCIIString() + "/results/" + taskId.getId();
-        return new Split(REMOTE_CONNECTOR_ID, new RemoteTransactionHandle(), new RemoteSplit(new Location(splitLocation), remoteSourceTaskId));
+        return new Split(REMOTE_CONNECTOR_ID, new RemoteTransactionHandle(), new RemoteSplit(new Location(splitLocation, remoteIsLeafStage), remoteSourceTaskId));
     }
 
     private void updateTaskStatus(TaskId taskId, TaskStatus taskStatus)

@@ -52,6 +52,8 @@ public class ExchangeClientFactory
     private final ThreadPoolExecutorMBean executorMBean;
     private final ExecutorService pageBufferClientCallbackExecutor;
 
+    private boolean isLeafLevelRecoverabilityEnabled;
+
     @Inject
     public ExchangeClientFactory(
             ExchangeClientConfig config,
@@ -70,7 +72,8 @@ public class ExchangeClientFactory
                 config.getResponseSizeExponentialMovingAverageDecayingAlpha(),
                 httpClient,
                 driftClient,
-                scheduler);
+                scheduler,
+                config.isLeafLevelRecoverabilityEnabled());
     }
 
     public ExchangeClientFactory(
@@ -84,7 +87,8 @@ public class ExchangeClientFactory
             double responseSizeExponentialMovingAverageDecayingAlpha,
             HttpClient httpClient,
             DriftClient<ThriftTaskClient> driftClient,
-            ScheduledExecutorService scheduler)
+            ScheduledExecutorService scheduler,
+            boolean isLeafLevelRecoverabilityEnabled)
     {
         this.maxBufferedBytes = requireNonNull(maxBufferedBytes, "maxBufferedBytes is null");
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
@@ -106,6 +110,7 @@ public class ExchangeClientFactory
         this.executorMBean = new ThreadPoolExecutorMBean((ThreadPoolExecutor) pageBufferClientCallbackExecutor);
 
         this.responseSizeExponentialMovingAverageDecayingAlpha = responseSizeExponentialMovingAverageDecayingAlpha;
+        this.isLeafLevelRecoverabilityEnabled = isLeafLevelRecoverabilityEnabled;
 
         checkArgument(maxBufferedBytes.toBytes() > 0, "maxBufferSize must be at least 1 byte: %s", maxBufferedBytes);
         checkArgument(maxResponseSize.toBytes() > 0, "maxResponseSize must be at least 1 byte: %s", maxResponseSize);
@@ -141,6 +146,7 @@ public class ExchangeClientFactory
                 driftClient,
                 scheduler,
                 systemMemoryContext,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                isLeafLevelRecoverabilityEnabled);
     }
 }

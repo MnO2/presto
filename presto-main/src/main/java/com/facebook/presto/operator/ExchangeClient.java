@@ -125,6 +125,9 @@ public class ExchangeClient
     private final LocalMemoryContext systemMemoryContext;
     private final Executor pageBufferClientCallbackExecutor;
 
+    private boolean isFetchingFromLeafStage = false;
+    private boolean isLeafLevelRecoverabilityEnabled = false;
+
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
     public ExchangeClient(
@@ -139,7 +142,8 @@ public class ExchangeClient
             DriftClient<ThriftTaskClient> driftClient,
             ScheduledExecutorService scheduler,
             LocalMemoryContext systemMemoryContext,
-            Executor pageBufferClientCallbackExecutor)
+            Executor pageBufferClientCallbackExecutor,
+            boolean isLeafLevelRecoverabilityEnabled)
     {
         checkArgument(responseSizeExponentialMovingAverageDecayingAlpha >= 0.0 && responseSizeExponentialMovingAverageDecayingAlpha <= 1.0, "responseSizeExponentialMovingAverageDecayingAlpha must be between 0 and 1: %s", responseSizeExponentialMovingAverageDecayingAlpha);
         this.bufferCapacity = bufferCapacity.toBytes();
@@ -155,6 +159,9 @@ public class ExchangeClient
         this.maxBufferRetainedSizeInBytes = Long.MIN_VALUE;
         this.pageBufferClientCallbackExecutor = requireNonNull(pageBufferClientCallbackExecutor, "pageBufferClientCallbackExecutor is null");
         this.responseSizeExponentialMovingAverage = new ExponentialMovingAverage(responseSizeExponentialMovingAverageDecayingAlpha, DEFAULT_MAX_PAGE_SIZE_IN_BYTES);
+
+        this.isFetchingFromLeafStage = isFetchingFromLeafStage;
+        this.isLeafLevelRecoverabilityEnabled = isLeafLevelRecoverabilityEnabled;
     }
 
     public ExchangeClientStatus getStatus()
@@ -176,7 +183,7 @@ public class ExchangeClient
         }
     }
 
-    public synchronized void addLocation(URI location, TaskId remoteSourceTaskId)
+    public synchronized void addLocation(URI location, TaskId remoteSourceTaskId, boolean isRemoteLeafStage)
     {
         requireNonNull(location, "location is null");
 
@@ -220,7 +227,8 @@ public class ExchangeClient
                 asyncPageTransportLocation,
                 new ExchangeClientCallback(),
                 scheduler,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                isRemoteLeafStage);
         allClients.put(location, client);
         checkState(taskIdToLocationMap.put(remoteSourceTaskId, location) == null, "Duplicate remoteSourceTaskId: " + remoteSourceTaskId);
         queuedClients.add(client);
@@ -492,7 +500,13 @@ public class ExchangeClient
         // TODO: properly handle the failed vs closed state
         // it is important not to treat failures as a successful close
         if (!isClosed()) {
-            //failure.compareAndSet(null, cause);
+            if (isFetchingFromLeafStage && isLeafLevelRecoverabilityEnabled) {
+                // graceful handling the death of the leaf level workers
+                closeQuietly(client);
+            } else {
+                failure.compareAndSet(null, cause);
+            }
+
             notifyBlockedCallers();
         }
     }
@@ -541,8 +555,7 @@ public class ExchangeClient
             requireNonNull(client, "client is null");
             requireNonNull(cause, "cause is null");
 
-            ExchangeClient.this.clientFinished(client);
-//            ExchangeClient.this.clientFailed(client, cause);
+            ExchangeClient.this.clientFailed(client, cause);
         }
     }
 
