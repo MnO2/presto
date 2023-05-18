@@ -48,6 +48,7 @@ import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.facebook.presto.sql.planner.NodePartitioningManager;
 import com.facebook.presto.sql.planner.PartitioningHandle;
+import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.SplitSourceFactory;
 import com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
@@ -514,7 +515,7 @@ public class SectionExecutionFactory
         }
         //error out grouped execution query to clear the noise
         checkArgument(!plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution(), "Grouped execution not supported");
-        NodePoolType workerPoolType = plan.getFragment().isLeaf() ? LEAF : INTERMEDIATE;
+        NodePoolType workerPoolType = !plan.getFragment().isLeaf() || PlanFragment.containLocalExchange(plan.getFragment().getRoot()) ? INTERMEDIATE : LEAF;
         return Optional.of(node -> node.getPoolType().equals(workerPoolType));
     }
 
