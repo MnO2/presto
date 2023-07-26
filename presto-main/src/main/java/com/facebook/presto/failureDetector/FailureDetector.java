@@ -14,15 +14,25 @@
 package com.facebook.presto.failureDetector;
 
 import com.facebook.airlift.discovery.client.ServiceDescriptor;
+import com.facebook.presto.execution.SqlStageExecution;
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.spi.HostAddress;
 
 import java.util.Set;
 
 public interface FailureDetector
 {
+    @FunctionalInterface
+    interface HostShuttingDownCallback
+    {
+        void nodeShuttingDown(String nodeID);
+    }
+
     Set<ServiceDescriptor> getFailed();
 
     State getState(HostAddress hostAddress);
+
+    void registerHostShuttingDownCallback(HostShuttingDownCallback hostShuttingDownCallback);
 
     enum State
     {
@@ -32,3 +42,4 @@ public interface FailureDetector
         UNRESPONSIVE,
     }
 }
+

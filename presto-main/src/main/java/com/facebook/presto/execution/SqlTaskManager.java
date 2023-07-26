@@ -481,6 +481,15 @@ public class SqlTaskManager
     }
 
     @Override
+    public void shutdownRemoteSource(TaskId taskId, TaskId remoteSourceTaskId)
+    {
+        requireNonNull(taskId, "taskId is null");
+        requireNonNull(remoteSourceTaskId, "remoteSourceTaskId is null");
+
+        tasks.getUnchecked(taskId).shutdownRemoteSource(remoteSourceTaskId);
+    }
+
+    @Override
     public TaskInfo cancelTask(TaskId taskId)
     {
         requireNonNull(taskId, "taskId is null");

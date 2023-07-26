@@ -83,6 +83,7 @@ public class ExchangeClient
     private static final SerializedPage NO_MORE_PAGES = new SerializedPage(EMPTY_SLICE, PageCodecMarker.none(), 0, 0, 0);
     private static final ListenableFuture<?> NOT_BLOCKED = immediateFuture(null);
 
+    private DataSize sinkMaxBufferSize;
     private final long bufferCapacity;
     private final DataSize maxResponseSize;
     private final int concurrentRequestMultiplier;
@@ -105,6 +106,7 @@ public class ExchangeClient
 
     private final Set<PageBufferClient> completedClients = newConcurrentHashSet();
     private final Set<PageBufferClient> removedClients = newConcurrentHashSet();
+    private final Deque<PageBufferClient> shuttingdownClients = new LinkedList<>();
     private final LinkedBlockingDeque<SerializedPage> pageBuffer = new LinkedBlockingDeque<>();
 
     @GuardedBy("this")
@@ -128,6 +130,7 @@ public class ExchangeClient
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
     public ExchangeClient(
+            DataSize sinkMaxBufferSize,
             DataSize bufferCapacity,
             DataSize maxResponseSize,
             int concurrentRequestMultiplier,
@@ -142,6 +145,7 @@ public class ExchangeClient
             Executor pageBufferClientCallbackExecutor)
     {
         checkArgument(responseSizeExponentialMovingAverageDecayingAlpha >= 0.0 && responseSizeExponentialMovingAverageDecayingAlpha <= 1.0, "responseSizeExponentialMovingAverageDecayingAlpha must be between 0 and 1: %s", responseSizeExponentialMovingAverageDecayingAlpha);
+        this.sinkMaxBufferSize = sinkMaxBufferSize;
         this.bufferCapacity = bufferCapacity.toBytes();
         this.maxResponseSize = maxResponseSize;
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
@@ -254,6 +258,30 @@ public class ExchangeClient
         completedClients.add(client);
     }
 
+    public synchronized void shutdownRemoteSource(TaskId sourceTaskId)
+    {
+        requireNonNull(sourceTaskId, "sourceTaskId is null");
+
+        // Ignore shutdownRemoteSource call if exchange client is already closed
+        if (closed.get()) {
+            return;
+        }
+
+        URI location = taskIdToLocationMap.get(sourceTaskId);
+        if (location == null) {
+            return;
+        }
+
+        PageBufferClient client = allClients.get(location);
+        if (client == null) {
+            return;
+        }
+
+        client.setFastDraining();
+        shuttingdownClients.add(client);
+        scheduleRequestIfNecessary();
+    }
+
     public synchronized void noMoreLocations()
     {
         noMoreLocations = true;
@@ -349,6 +377,28 @@ public class ExchangeClient
         notifyBlockedCallers();
     }
 
+    private boolean handleWorkerShuttingdown()
+    {
+        boolean anyPendingShuttingDownClient = false;
+        for (int i = 0; i < shuttingdownClients.size(); ) {
+            PageBufferClient client = shuttingdownClients.poll();
+            if (client == null) {
+                // no more clients available
+                return anyPendingShuttingDownClient;
+            }
+
+            if (completedClients.contains(client) || removedClients.contains(client)) {
+                continue;
+            }
+
+            client.scheduleRequest(sinkMaxBufferSize);
+            anyPendingShuttingDownClient = true;
+            i++;
+        }
+
+        return anyPendingShuttingDownClient;
+    }
+
     public synchronized void scheduleRequestIfNecessary()
     {
         if (isFinished() || isFailed()) {
@@ -364,6 +414,11 @@ public class ExchangeClient
                 close();
             }
             notifyBlockedCallers();
+            return;
+        }
+
+        boolean anyPendingShuttingDownClient = handleWorkerShuttingdown();
+        if (anyPendingShuttingDownClient) {
             return;
         }
 
@@ -469,6 +524,10 @@ public class ExchangeClient
 
     private synchronized void requestComplete(PageBufferClient client)
     {
+        if (client.isFastDraining()) {
+            shuttingdownClients.add(client);
+        }
+
         if (!queuedClients.contains(client)) {
             queuedClients.add(client);
         }

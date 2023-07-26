@@ -192,7 +192,7 @@ public class TaskInfoFetcher
         scheduleUpdate();
     }
 
-    private synchronized void stop()
+    public synchronized void stop()
     {
         running = false;
         if (future != null) {

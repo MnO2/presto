@@ -26,6 +26,7 @@ import com.facebook.airlift.node.NodeInfo;
 import com.facebook.airlift.stats.DecayCounter;
 import com.facebook.airlift.stats.ExponentialDecay;
 import com.facebook.presto.client.FailureInfo;
+import com.facebook.presto.execution.SqlStageExecution;
 import com.facebook.presto.server.InternalCommunicationConfig;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.util.Failures;
@@ -52,6 +53,7 @@ import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -71,6 +73,7 @@ import static com.facebook.presto.failureDetector.FailureDetector.State.UNKNOWN;
 import static com.facebook.presto.failureDetector.FailureDetector.State.UNRESPONSIVE;
 import static com.facebook.presto.spi.HostAddress.fromUri;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.util.Objects.requireNonNull;
@@ -99,6 +102,8 @@ public class HeartbeatFailureDetector
     private final boolean httpsRequired;
 
     private final AtomicBoolean started = new AtomicBoolean();
+
+    private Optional<FailureDetector.HostShuttingDownCallback> hostShuttingDownCallback = Optional.empty();
 
     @Inject
     public HeartbeatFailureDetector(
@@ -195,6 +200,12 @@ public class HeartbeatFailureDetector
         }
 
         return UNKNOWN;
+    }
+
+    public synchronized void registerHostShuttingDownCallback(FailureDetector.HostShuttingDownCallback hostShuttingDownCallback)
+    {
+        checkState(!this.hostShuttingDownCallback.isPresent(), "hostShuttingDownCallback should be registered only once");
+        this.hostShuttingDownCallback = Optional.of(requireNonNull(hostShuttingDownCallback, "hostShuttingDownCallback is null"));
     }
 
     @Managed(description = "Number of failed services")

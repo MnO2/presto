@@ -144,6 +144,9 @@ public interface TaskManager
      */
     void removeRemoteSource(TaskId taskId, TaskId remoteSourceTaskId);
 
+
+    void shutdownRemoteSource(TaskId taskId, TaskId remoteSourceTaskId);
+
     /**
      * Update the results of metadata requests sent
      */

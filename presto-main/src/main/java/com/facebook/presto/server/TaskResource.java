@@ -381,6 +381,16 @@ public class TaskResource
         taskManager.abortTaskResults(taskId, bufferId);
     }
 
+    @POST
+    @Path("{taskId}/remote-source/{remoteSourceTaskId}")
+    public void shutdownRemoteSource(@PathParam("taskId") TaskId taskId, @PathParam("remoteSourceTaskId") TaskId remoteSourceTaskId)
+    {
+        requireNonNull(taskId, "taskId is null");
+        requireNonNull(remoteSourceTaskId, "remoteSourceTaskId is null");
+
+        taskManager.shutdownRemoteSource(taskId, remoteSourceTaskId);
+    }
+
     @DELETE
     @Path("{taskId}/remote-source/{remoteSourceTaskId}")
     public void removeRemoteSource(@PathParam("taskId") TaskId taskId, @PathParam("remoteSourceTaskId") TaskId remoteSourceTaskId)

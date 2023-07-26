@@ -521,6 +521,16 @@ public class SqlTask
                 .forEach(exchangeClient -> exchangeClient.removeRemoteSource(sourceTaskId));
     }
 
+    public void shutdownRemoteSource(TaskId sourceTaskId)
+    {
+        requireNonNull(sourceTaskId, "sourceTaskId is null");
+
+        log.debug("Shutting down remote source %s from task %s", sourceTaskId, taskId);
+
+        taskExchangeClientManager.getExchangeClients()
+                .forEach(exchangeClient -> exchangeClient.shutdownRemoteSource(sourceTaskId));
+    }
+
     public void failed(Throwable cause)
     {
         requireNonNull(cause, "cause is null");

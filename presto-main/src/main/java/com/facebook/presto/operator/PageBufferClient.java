@@ -107,6 +107,8 @@ public final class PageBufferClient
     @GuardedBy("this")
     private String taskInstanceId;
 
+    private boolean isFastDraining = false;
+
     private final AtomicLong rowsReceived = new AtomicLong();
     private final AtomicInteger pagesReceived = new AtomicInteger();
 
@@ -194,6 +196,16 @@ public final class PageBufferClient
     public synchronized boolean isRunning()
     {
         return future != null;
+    }
+
+    public void setFastDraining()
+    {
+        isFastDraining = true;
+    }
+
+    public boolean isFastDraining()
+    {
+        return isFastDraining;
     }
 
     @Override

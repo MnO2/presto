@@ -139,6 +139,9 @@ public final class SqlStageExecution
     @GuardedBy("this")
     private Optional<StageTaskRecoveryCallback> stageTaskRecoveryCallback = Optional.empty();
 
+    @GuardedBy("this")
+    private Optional<TaskShuttingDownCallback> taskShuttingDownCallback = Optional.empty();
+
     public static SqlStageExecution createSqlStageExecution(
             StageExecutionId stageExecutionId,
             PlanFragment fragment,
@@ -196,6 +199,15 @@ public final class SqlStageExecution
         this.summarizeTaskInfo = summarizeTaskInfo;
         this.executor = requireNonNull(executor, "executor is null");
         this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
+        this.failureDetector.registerHostShuttingDownCallback(nodeID -> {
+            List<RemoteTask> shuttingDownTasks = getAllTasks().stream()
+                    .filter(task -> nodeID.equals(task.getNodeId()))
+                    .collect(toImmutableList());
+
+            shuttingDownTasks.forEach(task -> {
+                task.shutdown();
+            });
+        });
         this.tableWriteInfo = requireNonNull(tableWriteInfo);
         this.maxFailedTaskPercentage = maxFailedTaskPercentage;
 
@@ -255,6 +267,12 @@ public final class SqlStageExecution
     {
         checkState(!this.stageTaskRecoveryCallback.isPresent(), "stageTaskRecoveryCallback should be registered only once");
         this.stageTaskRecoveryCallback = Optional.of(requireNonNull(stageTaskRecoveryCallback, "stageTaskRecoveryCallback is null"));
+    }
+
+    public synchronized void registerTaskShuttingDownCallback(TaskShuttingDownCallback taskShuttingDownCallback)
+    {
+        checkState(!this.taskShuttingDownCallback.isPresent(), "taskShuttingDownCallback should be registered only once");
+        this.taskShuttingDownCallback = Optional.of(requireNonNull(taskShuttingDownCallback, "taskShuttingDownCallback is null"));
     }
 
     public PlanFragment getFragment()
@@ -736,6 +754,12 @@ public final class SqlStageExecution
     public interface StageTaskRecoveryCallback
     {
         void recover(TaskId taskId);
+    }
+
+    @FunctionalInterface
+    public interface TaskShuttingDownCallback
+    {
+        void taskShuttingDown(TaskId taskId);
     }
 
     private static class ListenerManager<T>

@@ -127,6 +127,12 @@ public class PrestoSparkTaskManager
     }
 
     @Override
+    public void shutdownRemoteSource(TaskId taskId, TaskId remoteSourceTaskId)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void updateMetadataResults(TaskId taskId, MetadataUpdates metadataUpdates)
     {
         throw new UnsupportedOperationException();

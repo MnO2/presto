@@ -92,6 +92,7 @@ import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
+import static org.apache.ratis.thirdparty.com.google.common.collect.MoreCollectors.onlyElement;
 
 public class SectionExecutionFactory
 {
@@ -389,6 +390,13 @@ public class SectionExecutionFactory
                         fixedSourcePartitionedScheduler.recover(taskId);
                     });
                 }
+
+                stageExecution.registerTaskShuttingDownCallback(taskId -> {
+                    checkArgument(parentStageExecution.isPresent(), "Parent stage execution must exist");
+                    parentStageExecution.get().getAllTasks().forEach(task -> {
+                        task.shutdownRemoteSource(taskId);
+                    });
+                });
                 return fixedSourcePartitionedScheduler;
             }
 

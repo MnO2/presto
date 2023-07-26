@@ -105,6 +105,7 @@ import static com.facebook.airlift.http.client.HttpStatus.OK;
 import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static com.facebook.airlift.http.client.Request.Builder.prepareDelete;
 import static com.facebook.airlift.http.client.Request.Builder.preparePost;
+import static com.facebook.airlift.http.client.Request.Builder.preparePut;
 import static com.facebook.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
 import static com.facebook.airlift.http.client.StatusResponseHandler.createStatusResponseHandler;
 import static com.facebook.presto.SystemSessionProperties.getMaxUnacknowledgedSplitsPerTask;
@@ -540,6 +541,77 @@ public final class HttpRemoteTask
         SettableFuture<?> future = SettableFuture.create();
         doRemoveRemoteSource(errorTracker, request, future);
         return future;
+    }
+
+    @Override
+    public ListenableFuture<?> shutdownRemoteSource(TaskId remoteSourceTaskId)
+    {
+        URI remoteSourceUri = uriBuilderFrom(taskLocation)
+                .appendPath("remote-source")
+                .appendPath(remoteSourceTaskId.toString())
+                .build();
+
+        Request request = preparePut()
+                .setUri(remoteSourceUri)
+                .build();
+        RequestErrorTracker errorTracker = taskRequestErrorTracker(
+                taskId,
+                remoteSourceUri,
+                maxErrorDuration,
+                errorScheduledExecutor,
+                "Shutdown exchange remote source");
+
+        SettableFuture<?> future = SettableFuture.create();
+        doShutdownRemoteSource(errorTracker, request, future);
+        return future;
+    }
+
+    private void doShutdownRemoteSource(RequestErrorTracker errorTracker, Request request, SettableFuture<?> future)
+    {
+        errorTracker.startRequest();
+
+        FutureCallback<StatusResponse> callback = new FutureCallback<StatusResponse>()
+        {
+            @Override
+            public void onSuccess(@Nullable StatusResponse response)
+            {
+                if (response == null) {
+                    throw new PrestoException(GENERIC_INTERNAL_ERROR, "Request failed with null response");
+                }
+                if (response.getStatusCode() != OK.code() && response.getStatusCode() != NO_CONTENT.code()) {
+                    throw new PrestoException(GENERIC_INTERNAL_ERROR, "Request failed with HTTP status " + response.getStatusCode());
+                }
+                future.set(null);
+            }
+
+            @Override
+            public void onFailure(Throwable failedReason)
+            {
+                if (failedReason instanceof RejectedExecutionException && httpClient.isClosed()) {
+                    log.error("Unable to destroy exchange source at %s. HTTP client is closed", request.getUri());
+                    future.setException(failedReason);
+                    return;
+                }
+                // record failure
+                try {
+                    errorTracker.requestFailed(failedReason);
+                }
+                catch (PrestoException e) {
+                    future.setException(e);
+                    return;
+                }
+                // if throttled due to error, asynchronously wait for timeout and try again
+                ListenableFuture<?> errorRateLimit = errorTracker.acquireRequestPermit();
+                if (errorRateLimit.isDone()) {
+                    doShutdownRemoteSource(errorTracker, request, future);
+                }
+                else {
+                    errorRateLimit.addListener(() -> doShutdownRemoteSource(errorTracker, request, future), errorScheduledExecutor);
+                }
+            }
+        };
+
+        addCallback(httpClient.executeAsync(request, createStatusResponseHandler()), callback, directExecutor());
     }
 
     /// This method may call itself recursively when retrying for failures
@@ -1005,6 +1077,13 @@ public final class HttpRemoteTask
                     .build();
             scheduleAsyncCleanupRequest(createCleanupBackoff(), request, "abort");
         }
+    }
+
+    @Override
+    public synchronized void shutdown()
+    {
+        taskStatusFetcher.stop();
+        taskInfoFetcher.stop();
     }
 
     private void scheduleAsyncCleanupRequest(Backoff cleanupBackoff, Request request, String action)

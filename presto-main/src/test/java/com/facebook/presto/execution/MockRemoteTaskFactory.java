@@ -471,6 +471,12 @@ public class MockRemoteTaskFactory
         }
 
         @Override
+        public ListenableFuture<?> shutdownRemoteSource(TaskId remoteSourceTaskId)
+        {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void addStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener)
         {
             taskStateMachine.addStateChangeListener(newValue -> stateChangeListener.stateChanged(getTaskStatus()));
@@ -506,6 +512,11 @@ public class MockRemoteTaskFactory
         {
             taskStateMachine.abort();
             clearSplits();
+        }
+
+        @Override
+        public void shutdown()
+        {
         }
 
         @Override

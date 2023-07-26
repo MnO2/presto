@@ -33,4 +33,9 @@ public class NoOpFailureDetector
     {
         return State.UNKNOWN;
     }
+
+    @Override
+    public void registerHostShuttingDownCallback(FailureDetector.HostShuttingDownCallback hostShuttingDownCallback)
+    {
+    }
 }

@@ -49,6 +49,8 @@ public interface RemoteTask
 
     ListenableFuture<?> removeRemoteSource(TaskId remoteSourceTaskId);
 
+    ListenableFuture<?> shutdownRemoteSource(TaskId remoteSourceTaskId);
+
     /**
      * Listener is always notified asynchronously using a dedicated notification thread pool so, care should
      * be taken to avoid leaking {@code this} when adding a listener in a constructor. Additionally, it is
@@ -69,6 +71,8 @@ public interface RemoteTask
     void cancel();
 
     void abort();
+
+    void shutdown();
 
     PartitionedSplitsInfo getPartitionedSplitsInfo();
 

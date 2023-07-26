@@ -553,6 +553,7 @@ public class TestExchangeClient
     private ExchangeClient createExchangeClient(MockExchangeRequestProcessor processor, DataSize bufferCapacity, DataSize maxResponseSize)
     {
         return new ExchangeClient(
+                new DataSize(32, MEGABYTE),
                 bufferCapacity,
                 maxResponseSize,
                 1,
