@@ -21,6 +21,7 @@ import com.facebook.airlift.http.client.testing.TestingResponse;
 import com.facebook.airlift.testing.TestingTicker;
 import com.facebook.presto.common.Page;
 import com.facebook.presto.operator.PageBufferClient.ClientCallback;
+import com.facebook.presto.server.NodeStatusNotificationManager;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.page.PagesSerde;
 import com.facebook.presto.spi.page.SerializedPage;
@@ -66,6 +67,7 @@ public class TestPageBufferClient
     private ExecutorService pageBufferClientCallbackExecutor;
 
     private static final PagesSerde PAGES_SERDE = testingPagesSerde();
+    private final NodeStatusNotificationManager statusNotificationManager = new NodeStatusNotificationManager();
 
     @BeforeClass
     public void setUp()
@@ -108,7 +110,8 @@ public class TestPageBufferClient
                 location,
                 callback,
                 scheduler,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                statusNotificationManager);
 
         assertStatus(client, location, "queued", 0, 0, 0, 0, "not scheduled");
 
@@ -194,7 +197,8 @@ public class TestPageBufferClient
                 location,
                 callback,
                 scheduler,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                statusNotificationManager);
 
         assertStatus(client, location, "queued", 0, 0, 0, 0, "not scheduled");
 
@@ -235,7 +239,8 @@ public class TestPageBufferClient
                 location,
                 callback,
                 scheduler,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                statusNotificationManager);
 
         assertStatus(client, location, "queued", 0, 0, 0, 0, "not scheduled");
 
@@ -304,7 +309,8 @@ public class TestPageBufferClient
                 location,
                 callback,
                 scheduler,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                statusNotificationManager);
 
         assertStatus(client, location, "queued", 0, 0, 0, 0, "not scheduled");
 
@@ -360,7 +366,8 @@ public class TestPageBufferClient
                 callback,
                 scheduler,
                 ticker,
-                pageBufferClientCallbackExecutor);
+                pageBufferClientCallbackExecutor,
+                statusNotificationManager);
 
         assertStatus(client, location, "queued", 0, 0, 0, 0, "not scheduled");
 
@@ -505,10 +512,14 @@ public class TestPageBufferClient
             // requestComplete() will be called after this
         }
 
-        @Override
         public long getBufferRetainedSizeInBytes()
         {
             return 0;
+        }
+
+        @Override
+        public void clientNodeShutdown(PageBufferClient client)
+        {
         }
 
         public void resetStats()

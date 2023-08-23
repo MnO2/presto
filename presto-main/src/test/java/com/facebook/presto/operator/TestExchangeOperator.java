@@ -25,6 +25,7 @@ import com.facebook.presto.execution.buffer.TestingPagesSerdeFactory;
 import com.facebook.presto.metadata.RemoteTransactionHandle;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.ExchangeOperator.ExchangeOperatorFactory;
+import com.facebook.presto.server.NodeStatusNotificationManager;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.split.RemoteSplit;
 import com.google.common.cache.CacheBuilder;
@@ -75,7 +76,8 @@ public class TestExchangeOperator
     private HttpClient httpClient;
     private ExchangeClientSupplier exchangeClientSupplier;
     private ExecutorService pageBufferClientCallbackExecutor;
-
+    private NodeStatusNotificationManager statusNotificationManager = new NodeStatusNotificationManager();
+    private ExchangeClientStats exchangeClientStats = new ExchangeClientStats();
     @SuppressWarnings("resource")
     @BeforeClass
     public void setUp()
@@ -86,6 +88,7 @@ public class TestExchangeOperator
         httpClient = new TestingHttpClient(new TestingExchangeHttpClientHandler(taskBuffers), scheduler);
 
         exchangeClientSupplier = (systemMemoryUsageListener) -> new ExchangeClient(
+                new DataSize(32, MEGABYTE),
                 new DataSize(32, MEGABYTE),
                 new DataSize(10, MEGABYTE),
                 3,
@@ -100,8 +103,10 @@ public class TestExchangeOperator
                 false,
                 false,
                 null,
-                 null,
-                null);
+                null,
+                null,
+                statusNotificationManager,
+                exchangeClientStats);
     }
 
     @AfterClass(alwaysRun = true)

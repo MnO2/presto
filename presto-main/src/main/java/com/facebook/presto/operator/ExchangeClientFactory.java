@@ -20,8 +20,10 @@ import com.facebook.drift.client.DriftClient;
 import com.facebook.presto.event.TaskMonitor;
 import com.facebook.presto.eventlistener.EventListenerManager;
 import com.facebook.presto.execution.QueryManagerConfig;
+import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.server.DownstreamStatsRequest;
+import com.facebook.presto.server.NodeStatusNotificationManager;
 import com.facebook.presto.server.thrift.ThriftTaskClient;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -44,6 +46,7 @@ import static java.util.concurrent.Executors.newFixedThreadPool;
 public class ExchangeClientFactory
         implements ExchangeClientSupplier
 {
+    private final DataSize sinkMaxBufferSize;
     private final DataSize maxBufferedBytes;
     private final int concurrentRequestMultiplier;
     private final Duration maxErrorDuration;
@@ -59,18 +62,25 @@ public class ExchangeClientFactory
     private final JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec;
     private final EventListenerManager eventListenerManager;
     private final TaskMonitor taskMonitor;
+    private final NodeStatusNotificationManager nodeStatusNotifier;
+    private final ExchangeClientStats exchangeClientStats;
+
     @Inject
     public ExchangeClientFactory(
             ExchangeClientConfig config,
+            TaskManagerConfig taskManagerConfig,
             @ForExchange HttpClient httpClient,
             @ForExchange DriftClient<ThriftTaskClient> driftClient,
             @ForExchange ScheduledExecutorService scheduler,
             QueryManagerConfig queryManagerConfig,
             JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec,
             EventListenerManager eventListenerManager,
-            TaskMonitor taskMonitor)
+            TaskMonitor taskMonitor,
+            NodeStatusNotificationManager nodeStatusNotifier,
+            ExchangeClientStats exchangeClientStats)
     {
         this(
+                taskManagerConfig.getSinkMaxBufferSize(),
                 config.getMaxBufferSize(),
                 config.getMaxResponseSize(),
                 config.getConcurrentRequestMultiplier(),
@@ -84,10 +94,13 @@ public class ExchangeClientFactory
                 queryManagerConfig,
                 downstreamStatsRequestJsonCodec,
                 eventListenerManager,
-                taskMonitor);
+                taskMonitor,
+                nodeStatusNotifier,
+                exchangeClientStats);
     }
 
     public ExchangeClientFactory(
+            DataSize sinkMaxBufferSize,
             DataSize maxBufferedBytes,
             DataSize maxResponseSize,
             int concurrentRequestMultiplier,
@@ -101,8 +114,11 @@ public class ExchangeClientFactory
             QueryManagerConfig queryManagerConfig,
             JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec,
             EventListenerManager eventListenerManager,
-            TaskMonitor taskMonitor)
+            TaskMonitor taskMonitor,
+            NodeStatusNotificationManager nodeStatusNotifier,
+            ExchangeClientStats exchangeClientStats)
     {
+        this.sinkMaxBufferSize = requireNonNull(sinkMaxBufferSize, "sinkMaxBufferSize is null");
         this.maxBufferedBytes = requireNonNull(maxBufferedBytes, "maxBufferedBytes is null");
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
         this.maxErrorDuration = requireNonNull(maxErrorDuration, "maxErrorDuration is null");
@@ -127,6 +143,8 @@ public class ExchangeClientFactory
         this.eventListenerManager = eventListenerManager;
         this.taskMonitor = taskMonitor;
 
+        this.nodeStatusNotifier = nodeStatusNotifier;
+        this.exchangeClientStats = exchangeClientStats;
         checkArgument(maxBufferedBytes.toBytes() > 0, "maxBufferSize must be at least 1 byte: %s", maxBufferedBytes);
         checkArgument(maxResponseSize.toBytes() > 0, "maxResponseSize must be at least 1 byte: %s", maxResponseSize);
         checkArgument(concurrentRequestMultiplier > 0, "concurrentRequestMultiplier must be at least 1: %s", concurrentRequestMultiplier);
@@ -150,6 +168,7 @@ public class ExchangeClientFactory
     public ExchangeClient get(LocalMemoryContext systemMemoryContext)
     {
         return new ExchangeClient(
+                sinkMaxBufferSize,
                 maxBufferedBytes,
                 maxResponseSize,
                 concurrentRequestMultiplier,
@@ -165,6 +184,8 @@ public class ExchangeClientFactory
                 queryManagerConfig.isEnableRetryForFailedSplits(),
                 downstreamStatsRequestJsonCodec,
                 eventListenerManager,
-                taskMonitor);
+                taskMonitor,
+                nodeStatusNotifier,
+                exchangeClientStats);
     }
 }

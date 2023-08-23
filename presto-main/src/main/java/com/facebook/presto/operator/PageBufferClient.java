@@ -17,6 +17,7 @@ import com.facebook.airlift.http.client.HttpUriBuilder;
 import com.facebook.airlift.log.Logger;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.server.DownstreamStatsRequest;
+import com.facebook.presto.server.NodeStatusNotificationManager;
 import com.facebook.presto.server.remotetask.Backoff;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
@@ -38,7 +39,10 @@ import java.io.Closeable;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
@@ -91,6 +95,7 @@ public final class PageBufferClient
         void clientFailed(PageBufferClient client, Throwable cause);
 
         long getBufferRetainedSizeInBytes();
+        void clientNodeShutdown(PageBufferClient client);
     }
 
     private final RpcShuffleClient resultClient;
@@ -121,6 +126,7 @@ public final class PageBufferClient
     @GuardedBy("this")
     private boolean isServerGracefulShutdown;
 
+    private boolean isFastDraining;
     private final AtomicLong rowsReceived = new AtomicLong();
     private final AtomicInteger pagesReceived = new AtomicInteger();
 
@@ -133,6 +139,7 @@ public final class PageBufferClient
 
     private final Executor pageBufferClientCallbackExecutor;
     private static final MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
+    private final NodeStatusNotificationManager nodeStatusNotifier;
 
     public PageBufferClient(
             RpcShuffleClient resultClient,
@@ -141,9 +148,10 @@ public final class PageBufferClient
             URI location,
             ClientCallback clientCallback,
             ScheduledExecutorService scheduler,
-            Executor pageBufferClientCallbackExecutor)
+            Executor pageBufferClientCallbackExecutor,
+            NodeStatusNotificationManager nodeStatusNotifier)
     {
-        this(resultClient, maxErrorDuration, acknowledgePages, location, clientCallback, scheduler, Ticker.systemTicker(), pageBufferClientCallbackExecutor);
+        this(resultClient, maxErrorDuration, acknowledgePages, location, clientCallback, scheduler, Ticker.systemTicker(), pageBufferClientCallbackExecutor, nodeStatusNotifier);
     }
 
     public PageBufferClient(
@@ -154,7 +162,8 @@ public final class PageBufferClient
             ClientCallback clientCallback,
             ScheduledExecutorService scheduler,
             Ticker ticker,
-            Executor pageBufferClientCallbackExecutor)
+            Executor pageBufferClientCallbackExecutor,
+            NodeStatusNotificationManager nodeStatusNotifier)
     {
         this.resultClient = requireNonNull(resultClient, "resultClient is null");
         this.acknowledgePages = acknowledgePages;
@@ -165,6 +174,21 @@ public final class PageBufferClient
         requireNonNull(maxErrorDuration, "maxErrorDuration is null");
         requireNonNull(ticker, "ticker is null");
         this.backoff = new Backoff(maxErrorDuration, ticker);
+        this.nodeStatusNotifier = nodeStatusNotifier;
+
+        try {
+            InetAddress address = Inet6Address.getByName(location.getHost());
+            this.nodeStatusNotifier.getNotificationProvider().registerRemoteHostShutdownEventListener(address, this::onWorkerNodeShutdown);
+        }
+        catch (UnknownHostException exception) {
+            log.error("Unable to parse URI location's host address into IP, skipping registerGracefulShutdownEventListener.");
+        }
+    }
+
+    private synchronized void onWorkerNodeShutdown()
+    {
+        setFastDraining();
+        clientCallback.clientNodeShutdown(this);
     }
 
     public synchronized PageBufferClientStatus getStatus()
@@ -211,6 +235,16 @@ public final class PageBufferClient
     public boolean isServerGracefulShutdown()
     {
         return isServerGracefulShutdown;
+    }
+
+    public void setFastDraining()
+    {
+        isFastDraining = true;
+    }
+
+    public boolean isFastDraining()
+    {
+        return isFastDraining;
     }
 
     @Override
