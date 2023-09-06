@@ -14,9 +14,17 @@
 package com.facebook.presto.execution.executor;
 
 import com.facebook.airlift.testing.TestingTicker;
+import com.facebook.presto.execution.Lifespan;
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitRunner;
 import com.facebook.presto.execution.TaskId;
+import com.facebook.presto.execution.TestSqlTaskExecution;
+import com.facebook.presto.metadata.Split;
 import com.facebook.presto.server.ServerConfig;
+import com.facebook.presto.spi.ConnectorId;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
+import com.facebook.presto.spi.plan.PlanNodeId;
+import com.facebook.presto.testing.TestingTransactionHandle;
 import com.facebook.presto.version.EmbedVersion;
 import com.google.common.base.Ticker;
 import com.google.common.collect.ImmutableList;
@@ -39,8 +47,10 @@ import static com.facebook.airlift.testing.Assertions.assertGreaterThan;
 import static com.facebook.airlift.testing.Assertions.assertLessThan;
 import static com.facebook.presto.execution.TaskManagerConfig.TaskPriorityTracking.QUERY_FAIR;
 import static com.facebook.presto.execution.TaskManagerConfig.TaskPriorityTracking.TASK_FAIR;
+import static com.facebook.presto.execution.TaskTestUtils.TABLE_SCAN_NODE_ID;
 import static com.facebook.presto.execution.executor.MultilevelSplitQueue.LEVEL_CONTRIBUTION_CAP;
 import static com.facebook.presto.execution.executor.MultilevelSplitQueue.LEVEL_THRESHOLD_SECONDS;
+import static com.facebook.presto.spi.SplitContext.NON_CACHEABLE;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -51,6 +61,14 @@ import static org.testng.Assert.assertTrue;
 
 public class TestTaskExecutor
 {
+    private static final ConnectorId CONNECTOR_ID = new ConnectorId("test");
+    private static final ConnectorTransactionHandle TRANSACTION_HANDLE = TestingTransactionHandle.create();
+
+    private ScheduledSplit newScheduledSplit(int sequenceId, PlanNodeId planNodeId, Lifespan lifespan, int begin, int count)
+    {
+        return new ScheduledSplit(sequenceId, planNodeId, new Split(CONNECTOR_ID, TRANSACTION_HANDLE, new TestSqlTaskExecution.TestingSplit(begin, begin + count), lifespan, NON_CACHEABLE));
+    }
+
     @Test(invocationCount = 100)
     public void testTasksComplete()
             throws Exception
@@ -71,9 +89,9 @@ public class TestTaskExecutor
 
             // add two jobs
             TestingJob driver1 = new TestingJob(ticker, new Phaser(1), beginPhase, verificationComplete, 10, 0);
-            ListenableFuture<?> future1 = getOnlyElement(taskExecutor.enqueueSplits(taskHandle, true, ImmutableList.of(driver1)));
+            ListenableFuture<?> future1 = getOnlyElement(taskExecutor.enqueueIntermediateSplits(taskHandle, ImmutableList.of(driver1)));
             TestingJob driver2 = new TestingJob(ticker, new Phaser(1), beginPhase, verificationComplete, 10, 0);
-            ListenableFuture<?> future2 = getOnlyElement(taskExecutor.enqueueSplits(taskHandle, true, ImmutableList.of(driver2)));
+            ListenableFuture<?> future2 = getOnlyElement(taskExecutor.enqueueIntermediateSplits(taskHandle, ImmutableList.of(driver2)));
             assertEquals(driver1.getCompletedPhases(), 0);
             assertEquals(driver2.getCompletedPhases(), 0);
 
@@ -96,7 +114,7 @@ public class TestTaskExecutor
 
             // add one more job
             TestingJob driver3 = new TestingJob(ticker, new Phaser(1), beginPhase, verificationComplete, 10, 0);
-            ListenableFuture<?> future3 = getOnlyElement(taskExecutor.enqueueSplits(taskHandle, false, ImmutableList.of(driver3)));
+            ListenableFuture<?> future3 = getOnlyElement(taskExecutor.enqueueLeafSplits(taskHandle, ImmutableList.of(driver3), ImmutableList.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123))));
 
             // advance one phase and verify
             beginPhase.arriveAndAwaitAdvance();
@@ -163,8 +181,8 @@ public class TestTaskExecutor
             TestingJob shortQuantaDriver = new TestingJob(ticker, new Phaser(), new Phaser(), globalPhaser, 10, 10);
             TestingJob longQuantaDriver = new TestingJob(ticker, new Phaser(), new Phaser(), globalPhaser, 10, 20);
 
-            taskExecutor.enqueueSplits(shortQuantaTaskHandle, true, ImmutableList.of(shortQuantaDriver));
-            taskExecutor.enqueueSplits(longQuantaTaskHandle, true, ImmutableList.of(longQuantaDriver));
+            taskExecutor.enqueueIntermediateSplits(shortQuantaTaskHandle, ImmutableList.of(shortQuantaDriver));
+            taskExecutor.enqueueIntermediateSplits(longQuantaTaskHandle, ImmutableList.of(longQuantaDriver));
 
             for (int i = 0; i < 11; i++) {
                 globalPhaser.arriveAndAwaitAdvance();
@@ -200,7 +218,7 @@ public class TestTaskExecutor
             TestingJob driver1 = new TestingJob(ticker, globalPhaser, new Phaser(), new Phaser(), totalPhases, quantaTimeMills);
             TestingJob driver2 = new TestingJob(ticker, globalPhaser, new Phaser(), new Phaser(), totalPhases, quantaTimeMills);
 
-            taskExecutor.enqueueSplits(testTaskHandle, true, ImmutableList.of(driver1, driver2));
+            taskExecutor.enqueueIntermediateSplits(testTaskHandle, ImmutableList.of(driver1, driver2));
 
             int completedPhases = 0;
             for (int i = 0; i < (LEVEL_THRESHOLD_SECONDS.length - 1); i++) {
@@ -237,20 +255,17 @@ public class TestTaskExecutor
 
                 // move task 0 to next level
                 TestingJob task0Job = new TestingJob(ticker, new Phaser(1), new Phaser(), new Phaser(), 1, LEVEL_THRESHOLD_SECONDS[i + 1] * 1000);
-                taskExecutor.enqueueSplits(
+                taskExecutor.enqueueIntermediateSplits(
                         taskHandles[0],
-                        true,
                         ImmutableList.of(task0Job));
                 // move tasks 1 and 2 to this level
                 TestingJob task1Job = new TestingJob(ticker, new Phaser(1), new Phaser(), new Phaser(), 1, LEVEL_THRESHOLD_SECONDS[i] * 1000);
-                taskExecutor.enqueueSplits(
+                taskExecutor.enqueueIntermediateSplits(
                         taskHandles[1],
-                        true,
                         ImmutableList.of(task1Job));
                 TestingJob task2Job = new TestingJob(ticker, new Phaser(1), new Phaser(), new Phaser(), 1, LEVEL_THRESHOLD_SECONDS[i] * 1000);
-                taskExecutor.enqueueSplits(
+                taskExecutor.enqueueIntermediateSplits(
                         taskHandles[2],
-                        true,
                         ImmutableList.of(task2Job));
 
                 task0Job.getCompletedFuture().get();
@@ -265,9 +280,9 @@ public class TestTaskExecutor
                     drivers[j] = new TestingJob(ticker, globalPhaser, new Phaser(), new Phaser(), phasesForNextLevel, 1000);
                 }
 
-                taskExecutor.enqueueSplits(taskHandles[0], true, ImmutableList.of(drivers[0], drivers[1]));
-                taskExecutor.enqueueSplits(taskHandles[1], true, ImmutableList.of(drivers[2], drivers[3]));
-                taskExecutor.enqueueSplits(taskHandles[2], true, ImmutableList.of(drivers[4], drivers[5]));
+                taskExecutor.enqueueIntermediateSplits(taskHandles[0], ImmutableList.of(drivers[0], drivers[1]));
+                taskExecutor.enqueueIntermediateSplits(taskHandles[1], ImmutableList.of(drivers[2], drivers[3]));
+                taskExecutor.enqueueIntermediateSplits(taskHandles[2], ImmutableList.of(drivers[4], drivers[5]));
 
                 // run all three drivers
                 int lowerLevelStart = drivers[2].getCompletedPhases() + drivers[3].getCompletedPhases() + drivers[4].getCompletedPhases() + drivers[5].getCompletedPhases();
@@ -323,11 +338,11 @@ public class TestTaskExecutor
             TestingJob driver2 = new TestingJob(ticker, new Phaser(), beginPhase, verificationComplete, 10, 0);
 
             // force enqueue a split
-            taskExecutor.enqueueSplits(taskHandle, true, ImmutableList.of(driver1));
+            taskExecutor.enqueueIntermediateSplits(taskHandle, ImmutableList.of(driver1));
             assertEquals(taskHandle.getRunningLeafSplits(), 0);
 
             // normal enqueue a split
-            taskExecutor.enqueueSplits(taskHandle, false, ImmutableList.of(driver2));
+            taskExecutor.enqueueLeafSplits(taskHandle, ImmutableList.of(driver2), ImmutableList.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123)));
             assertEquals(taskHandle.getRunningLeafSplits(), 1);
 
             // let the split continue to run
@@ -398,7 +413,7 @@ public class TestTaskExecutor
                 TestingJob split2 = new TestingJob(ticker, new Phaser(), new Phaser(), phasers[batch], 1, 0);
                 splits[2 * batch] = split1;
                 splits[2 * batch + 1] = split2;
-                taskExecutor.enqueueSplits(testTaskHandle, false, ImmutableList.of(split1, split2));
+                taskExecutor.enqueueLeafSplits(testTaskHandle, ImmutableList.of(split1, split2), ImmutableList.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123), newScheduledSplit(1, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100001, 124)));
             }
 
             // assert that the splits are processed in batches as expected
@@ -437,7 +452,7 @@ public class TestTaskExecutor
                 phasers[batch].register();
                 TestingJob split = new TestingJob(ticker, new Phaser(), new Phaser(), phasers[batch], 1, 0);
                 splits[batch] = split;
-                taskExecutor.enqueueSplits(testTaskHandle, false, ImmutableList.of(split));
+                taskExecutor.enqueueLeafSplits(testTaskHandle, ImmutableList.of(split), ImmutableList.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123)));
             }
 
             // assert that the splits are processed in batches as expected
@@ -482,7 +497,7 @@ public class TestTaskExecutor
                     new Duration(1, TimeUnit.SECONDS),
                     OptionalInt.of(1));
             MockSplitRunner mockSplitRunner = new MockSplitRunner();
-            taskExecutor.enqueueSplits(taskHandle, false, ImmutableList.of(mockSplitRunner));
+            taskExecutor.enqueueLeafSplits(taskHandle, ImmutableList.of(mockSplitRunner), ImmutableList.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123)));
             mockSplitRunner.interrupted.get(60, TimeUnit.SECONDS);
         }
         finally {

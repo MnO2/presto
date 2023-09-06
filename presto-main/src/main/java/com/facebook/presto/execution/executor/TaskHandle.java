@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.execution.executor;
 
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitConcurrencyController;
 import com.facebook.presto.execution.TaskId;
 import com.google.common.collect.ImmutableList;
@@ -41,6 +42,8 @@ public class TaskHandle
     private final TaskPriorityTracker priorityTracker;
     private final OptionalInt maxDriversPerTask;
 
+    @GuardedBy("this")
+    private List<ScheduledSplit> leafScheduledSplits = new ArrayList<>(10);
     @GuardedBy("this")
     protected final Queue<PrioritizedSplitRunner> queuedLeafSplits = new ArrayDeque<>(10);
     @GuardedBy("this")
@@ -112,14 +115,17 @@ public class TaskHandle
         runningIntermediateSplits.clear();
         runningLeafSplits.clear();
         queuedLeafSplits.clear();
+        leafScheduledSplits.clear();
         return builder.build();
     }
 
-    public synchronized boolean enqueueSplit(PrioritizedSplitRunner split)
+    public synchronized boolean enqueueLeafSplit(PrioritizedSplitRunner split, ScheduledSplit scheduledSplit)
     {
         if (destroyed) {
             return false;
         }
+
+        leafScheduledSplits.add(scheduledSplit);
         queuedLeafSplits.add(split);
         return true;
     }
@@ -136,6 +142,16 @@ public class TaskHandle
     synchronized int getRunningLeafSplits()
     {
         return runningLeafSplits.size();
+    }
+
+    public List<ScheduledSplit> getUnprocessedSplits()
+    {
+        return leafScheduledSplits;
+    }
+
+    public boolean isTaskIdling()
+    {
+        return runningLeafSplits.isEmpty() && runningIntermediateSplits.isEmpty() && queuedLeafSplits.isEmpty();
     }
 
     public synchronized long getScheduledNanos()
@@ -156,6 +172,7 @@ public class TaskHandle
         PrioritizedSplitRunner split = queuedLeafSplits.poll();
         if (split != null) {
             runningLeafSplits.add(split);
+            leafScheduledSplits.remove(0);
         }
         return split;
     }

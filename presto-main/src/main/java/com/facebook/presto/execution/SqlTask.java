@@ -277,6 +277,9 @@ public class SqlTask
         long fullGcCount = 0;
         long fullGcTimeInMillis = 0L;
         long totalCpuTimeInNanos = 0L;
+        List<ScheduledSplit> unprocessedSplits = ImmutableList.of();
+        boolean isTaskIdling = false;
+
         if (taskHolder.getFinalTaskInfo() != null) {
             TaskStats taskStats = taskHolder.getFinalTaskInfo().getStats();
             queuedPartitionedDrivers = taskStats.getQueuedPartitionedDrivers();
@@ -308,6 +311,8 @@ public class SqlTask
             completedDriverGroups = taskContext.getCompletedDriverGroups();
             fullGcCount = taskContext.getFullGcCount();
             fullGcTimeInMillis = taskContext.getFullGcTime().toMillis();
+            unprocessedSplits = taskHolder.getTaskExecution().getUnprocessedSplits();
+            isTaskIdling = taskHolder.getTaskExecution().isTaskIdling();
         }
 
         return new TaskStatus(
@@ -331,7 +336,9 @@ public class SqlTask
                 totalCpuTimeInNanos,
                 taskStatusAgeInMillis,
                 queuedPartitionedSplitsWeight,
-                runningPartitionedSplitsWeight);
+                runningPartitionedSplitsWeight,
+                unprocessedSplits,
+                isTaskIdling);
     }
 
     private TaskStats getTaskStats(TaskHolder taskHolder)

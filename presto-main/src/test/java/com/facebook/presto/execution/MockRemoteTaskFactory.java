@@ -295,7 +295,9 @@ public class MockRemoteTaskFactory
                             0,
                             System.currentTimeMillis() + 100 - stats.getCreateTime().getMillis(),
                             0L,
-                            0L),
+                            0L,
+                            ImmutableList.of(),
+                            false),
                     DateTime.now(),
                     outputBuffer.getInfo(),
                     ImmutableSet.of(),
@@ -339,7 +341,9 @@ public class MockRemoteTaskFactory
                     // Adding 100 millis to make sure task age > 0 for testing
                     System.currentTimeMillis() + 100 - stats.getCreateTime().getMillis(),
                     queuedSplitsInfo.getWeightSum(),
-                    combinedSplitsInfo.getWeightSum() - queuedSplitsInfo.getWeightSum());
+                    combinedSplitsInfo.getWeightSum() - queuedSplitsInfo.getWeightSum(),
+                    ImmutableList.of(),
+                    false);
         }
 
         private void updateTaskStats()

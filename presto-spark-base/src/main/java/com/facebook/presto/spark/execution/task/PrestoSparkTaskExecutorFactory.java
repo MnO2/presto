@@ -928,7 +928,9 @@ public class PrestoSparkTaskExecutorFactory
                     taskStats.getTotalCpuTimeInNanos(),
                     System.currentTimeMillis() - taskStats.getCreateTime().getMillis(),
                     taskStats.getQueuedPartitionedSplitsWeight(),
-                    taskStats.getRunningPartitionedSplitsWeight());
+                    taskStats.getRunningPartitionedSplitsWeight(),
+                    ImmutableList.of(),
+                    false);
 
             OutputBufferInfo outputBufferInfo = new OutputBufferInfo(
                     outputBufferType.name(),

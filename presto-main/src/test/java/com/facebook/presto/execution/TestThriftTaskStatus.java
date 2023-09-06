@@ -209,7 +209,9 @@ public class TestThriftTaskStatus
                 TOTAL_CPU_TIME_IN_NANOS,
                 TASK_AGE,
                 QUEUED_PARTITIONED_WEIGHT,
-                RUNNING_PARTITIONED_WEIGHT);
+                RUNNING_PARTITIONED_WEIGHT,
+                ImmutableList.of(),
+                false);
     }
 
     private List<ExecutionFailureInfo> getExecutionFailureInfos()
