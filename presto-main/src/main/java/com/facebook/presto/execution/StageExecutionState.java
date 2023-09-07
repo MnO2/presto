@@ -49,6 +49,10 @@ public enum StageExecutionState
      */
     RUNNING(false, false),
     /**
+     * Waiting for the split retries if there is any.
+     */
+    DRAINING(false, false),
+    /**
      * Stage has finished executing and all output has been consumed.
      */
     FINISHED(true, false),

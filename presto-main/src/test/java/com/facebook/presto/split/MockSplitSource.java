@@ -165,6 +165,23 @@ public class MockSplitSource
     public static class MockConnectorSplit
             implements ConnectorSplit
     {
+        private final int connectorSplitId;
+
+        public MockConnectorSplit()
+        {
+            this.connectorSplitId = 0;
+        }
+
+        public MockConnectorSplit(int connectorSplitId)
+        {
+            this.connectorSplitId = connectorSplitId;
+        }
+
+        public int getConnectorSplitId()
+        {
+            return connectorSplitId;
+        }
+
         @Override
         public NodeSelectionStrategy getNodeSelectionStrategy()
         {

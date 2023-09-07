@@ -13,26 +13,33 @@
  */
 package com.facebook.presto.execution.scheduler;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
+import com.facebook.presto.common.RuntimeStats;
 import com.facebook.presto.execution.ForQueryExecution;
 import com.facebook.presto.execution.NodeTaskMap;
 import com.facebook.presto.execution.QueryManagerConfig;
 import com.facebook.presto.execution.RemoteTask;
 import com.facebook.presto.execution.RemoteTaskFactory;
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SqlStageExecution;
 import com.facebook.presto.execution.StageExecutionId;
 import com.facebook.presto.execution.StageExecutionState;
 import com.facebook.presto.execution.StageId;
+import com.facebook.presto.execution.TaskState;
 import com.facebook.presto.execution.TaskStatus;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.scheduler.nodeSelection.NodeSelector;
 import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.metadata.InternalNode;
+import com.facebook.presto.metadata.InternalNodeManager;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.ForScheduler;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.NodePoolType;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
@@ -45,8 +52,11 @@ import com.facebook.presto.sql.planner.SplitSourceFactory;
 import com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 
@@ -54,7 +64,9 @@ import javax.inject.Inject;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,13 +81,18 @@ import static com.facebook.presto.SystemSessionProperties.getConcurrentLifespans
 import static com.facebook.presto.SystemSessionProperties.getMaxTasksPerStage;
 import static com.facebook.presto.SystemSessionProperties.getWriterMinSize;
 import static com.facebook.presto.SystemSessionProperties.isOptimizedScaleWriterProducerBuffer;
+import static com.facebook.presto.common.RuntimeUnit.NANO;
+import static com.facebook.presto.common.RuntimeUnit.NONE;
 import static com.facebook.presto.execution.SqlStageExecution.createSqlStageExecution;
 import static com.facebook.presto.execution.scheduler.SourcePartitionedScheduler.newSourcePartitionedSchedulerAsStageScheduler;
 import static com.facebook.presto.execution.scheduler.TableWriteInfo.createTableWriteInfo;
 import static com.facebook.presto.spi.ConnectorId.isInternalSystemConnector;
 import static com.facebook.presto.spi.NodePoolType.INTERMEDIATE;
 import static com.facebook.presto.spi.NodePoolType.LEAF;
+import static com.facebook.presto.spi.NodeState.ACTIVE;
+import static com.facebook.presto.spi.StandardErrorCode.HOST_SHUTTING_DOWN;
 import static com.facebook.presto.spi.StandardErrorCode.NO_NODES_AVAILABLE;
+import static com.facebook.presto.spi.StandardErrorCode.REMOTE_TASK_ERROR;
 import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SCALED_WRITER_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SOURCE_DISTRIBUTION;
@@ -85,8 +102,10 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Iterables.getLast;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static com.google.common.collect.MoreCollectors.onlyElement;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static java.util.Objects.requireNonNull;
@@ -95,6 +114,9 @@ import static java.util.stream.Collectors.toSet;
 
 public class SectionExecutionFactory
 {
+    private static final Logger log = Logger.get(SectionExecutionFactory.class);
+    public static final int SPLIT_RETRY_BATCH_SIZE = 100;
+    private static final String RUNTIME_STATS_RETRIED_SPLITS_PREFIX = "retried-splits-node-";
     private final Metadata metadata;
     private final NodePartitioningManager nodePartitioningManager;
     private final NodeTaskMap nodeTaskMap;
@@ -105,7 +127,7 @@ public class SectionExecutionFactory
     private final NodeScheduler nodeScheduler;
     private final int splitBatchSize;
     private final boolean isEnableWorkerIsolation;
-
+    private final InternalNodeManager nodeManager;
     @Inject
     public SectionExecutionFactory(
             Metadata metadata,
@@ -116,7 +138,8 @@ public class SectionExecutionFactory
             FailureDetector failureDetector,
             SplitSchedulerStats schedulerStats,
             NodeScheduler nodeScheduler,
-            QueryManagerConfig queryManagerConfig)
+            QueryManagerConfig queryManagerConfig,
+            InternalNodeManager nodeManager)
     {
         this(
                 metadata,
@@ -128,7 +151,8 @@ public class SectionExecutionFactory
                 schedulerStats,
                 nodeScheduler,
                 requireNonNull(queryManagerConfig, "queryManagerConfig is null").getScheduleSplitBatchSize(),
-                queryManagerConfig.isEnableWorkerIsolation());
+                queryManagerConfig.isEnableWorkerIsolation(),
+                nodeManager);
     }
 
     public SectionExecutionFactory(
@@ -141,7 +165,8 @@ public class SectionExecutionFactory
             SplitSchedulerStats schedulerStats,
             NodeScheduler nodeScheduler,
             int splitBatchSize,
-            boolean isEnableWorkerIsolation)
+            boolean isEnableWorkerIsolation,
+            InternalNodeManager nodeManager)
     {
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.nodePartitioningManager = requireNonNull(nodePartitioningManager, "nodePartitioningManager is null");
@@ -153,6 +178,7 @@ public class SectionExecutionFactory
         this.nodeScheduler = requireNonNull(nodeScheduler, "nodeScheduler is null");
         this.splitBatchSize = splitBatchSize;
         this.isEnableWorkerIsolation = isEnableWorkerIsolation;
+        this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
     }
 
     /**
@@ -295,6 +321,59 @@ public class SectionExecutionFactory
             NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, connectorId, maxTasksPerStage, nodePredicate);
             SplitPlacementPolicy placementPolicy = new DynamicSplitPlacementPolicy(nodeSelector, stageExecution::getAllTasks);
 
+            if (plan.getFragment().isLeaf()) {
+                stageExecution.registerStageTaskRecoveryCallback((taskId, executionFailureInfos) -> {
+                    Set<String> activeNodeIDs = nodeManager.getNodes(ACTIVE).stream().map(InternalNode::getNodeIdentifier).collect(toImmutableSet());
+                    log.warn("Going to recover task - %s", taskId);
+                    RemoteTask failedRemoteTask = stageExecution.getAllTasks().stream()
+                            .filter(task -> task.getTaskId().equals(taskId))
+                            .collect(onlyElement());
+                    String failedNodeId = failedRemoteTask.getNodeId();
+
+                    List<RemoteTask> activeRemoteTasks = stageExecution.getAllTasks().stream()
+                            .filter(task -> !task.getTaskId().equals(taskId))
+                            .filter(task -> !task.getNodeId().equals(failedNodeId))
+                            .filter(task -> activeNodeIDs.contains(task.getNodeId()))
+                            .filter(task -> task.getTaskStatus().getState() != TaskState.FAILED)
+                            .collect(toList());
+
+                    if (activeRemoteTasks.isEmpty()) {
+                        throw new PrestoException(REMOTE_TASK_ERROR, "Running out of the eligible remote tasks to retry");
+                    }
+
+                    Collections.shuffle(activeRemoteTasks);
+
+                    synchronized (stageExecution) {
+                        List<ScheduledSplit> unprocessedSplits = failedRemoteTask.getTaskStatus().getUnprocessedSplits();
+                        Iterator<List<Split>> splits = Iterables.partition(
+                                Iterables.transform(unprocessedSplits.stream().filter(scheduledSplit -> scheduledSplit.getPlanNodeId() == planNodeId).collect(toList()), ScheduledSplit::getSplit),
+                                SPLIT_RETRY_BATCH_SIZE).iterator();
+
+                        while (splits.hasNext()) {
+                            for (int i = 0; i < activeRemoteTasks.size() && splits.hasNext(); i++) {
+                                RemoteTask activeRemoteTask = activeRemoteTasks.get(i);
+                                List<Split> scheduledSplit = splits.next();
+                                Multimap<PlanNodeId, Split> splitsToAdd = HashMultimap.create();
+                                splitsToAdd.putAll(planNodeId, scheduledSplit);
+
+                                // log the runtime stats
+                                RuntimeStats splitRetryStats = new RuntimeStats();
+                                long minTime = executionFailureInfos.stream().filter(info -> info.getFailureDetectionTimeInNanos() != null).mapToLong(info -> info.getFailureDetectionTimeInNanos()).min().orElse(Long.MAX_VALUE);
+                                if (minTime != Long.MAX_VALUE) {
+                                    splitRetryStats.addMetricValue(new StringBuilder(RUNTIME_STATS_RETRIED_SPLITS_PREFIX).append(failedNodeId).toString(), NANO, System.nanoTime() - minTime);
+                                }
+                                else {
+                                    splitRetryStats.addMetricValue(new StringBuilder(RUNTIME_STATS_RETRIED_SPLITS_PREFIX).append(failedNodeId).toString(), NONE, 1);
+                                }
+                                session.getRuntimeStats().update(splitRetryStats);
+
+                                activeRemoteTask.addSplits(splitsToAdd);
+                            }
+                        }
+                    }
+                }, ImmutableSet.of(HOST_SHUTTING_DOWN.toErrorCode()));
+            }
+
             checkArgument(!plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution());
             return newSourcePartitionedSchedulerAsStageScheduler(stageExecution, planNodeId, splitSource, placementPolicy, splitBatchSize);
         }
@@ -380,7 +459,7 @@ public class SectionExecutionFactory
                         nodeScheduler.createNodeSelector(session, connectorId, nodePredicate),
                         connectorPartitionHandles);
                 if (plan.getFragment().getStageExecutionDescriptor().isRecoverableGroupedExecution()) {
-                    stageExecution.registerStageTaskRecoveryCallback(taskId -> {
+                    stageExecution.registerStageTaskRecoveryCallback((taskId, executionFailureInfos) -> {
                         checkArgument(taskId.getStageExecutionId().getStageId().equals(stageId), "The task did not execute this stage");
                         checkArgument(parentStageExecution.isPresent(), "Parent stage execution must exist");
                         checkArgument(parentStageExecution.get().getAllTasks().size() == 1, "Parent stage should only have one task for recoverable grouped execution");

@@ -47,6 +47,12 @@ public interface RemoteTask
 
     void setOutputBuffers(OutputBuffers outputBuffers);
 
+    void setIsRetried();
+
+    boolean isRetried();
+
+    boolean isTaskIdling();
+
     ListenableFuture<?> removeRemoteSource(TaskId remoteSourceTaskId);
 
     /**

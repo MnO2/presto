@@ -28,6 +28,7 @@ import com.facebook.presto.memory.QueryContext;
 import com.facebook.presto.memory.context.SimpleLocalMemoryContext;
 import com.facebook.presto.metadata.InternalNode;
 import com.facebook.presto.metadata.Split;
+import com.facebook.presto.operator.HostShuttingDownException;
 import com.facebook.presto.operator.StageExecutionDescriptor;
 import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.operator.TaskMemoryReservationSummary;
@@ -50,6 +51,7 @@ import com.facebook.presto.testing.TestingHandle;
 import com.facebook.presto.testing.TestingMetadata.TestingColumnHandle;
 import com.facebook.presto.testing.TestingMetadata.TestingTableHandle;
 import com.facebook.presto.testing.TestingTransactionHandle;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -178,6 +180,8 @@ public class MockRemoteTaskFactory
         private final String nodeId;
 
         private final PlanFragment fragment;
+        private boolean isRetriedOnFailure;
+        private boolean isTaskIdling;
 
         @GuardedBy("this")
         private final Set<PlanNodeId> noMoreSplits = new HashSet<>();
@@ -297,7 +301,7 @@ public class MockRemoteTaskFactory
                             0L,
                             0L,
                             ImmutableList.of(),
-                            false),
+                            isTaskIdling),
                     DateTime.now(),
                     outputBuffer.getInfo(),
                     ImmutableSet.of(),
@@ -316,9 +320,20 @@ public class MockRemoteTaskFactory
         @Override
         public TaskStatus getTaskStatus()
         {
+            TaskState state = taskStateMachine.getState();
             TaskStats stats = taskContext.getTaskStats();
             PartitionedSplitsInfo combinedSplitsInfo = getPartitionedSplitsInfo();
             PartitionedSplitsInfo queuedSplitsInfo = getQueuedPartitionedSplitsInfo();
+            List<ExecutionFailureInfo> failures = ImmutableList.of();
+            if (state == TaskState.FAILED) {
+                failures = toFailures(taskStateMachine.getFailureCauses());
+            }
+
+            ImmutableList.Builder<ScheduledSplit> unprocessedScheduledSplitBuilder = ImmutableList.builder();
+            for (Map.Entry<PlanNodeId, Split> entry : splits.entries()) {
+                unprocessedScheduledSplitBuilder.add(new ScheduledSplit(1, entry.getKey(), entry.getValue()));
+            }
+
             return new TaskStatus(
                     TASK_INSTANCE_ID.getLeastSignificantBits(),
                     TASK_INSTANCE_ID.getMostSignificantBits(),
@@ -326,7 +341,7 @@ public class MockRemoteTaskFactory
                     taskStateMachine.getState(),
                     location,
                     ImmutableSet.of(),
-                    ImmutableList.of(),
+                    failures,
                     queuedSplitsInfo.getCount(),
                     combinedSplitsInfo.getCount() - queuedSplitsInfo.getCount(),
                     0.0,
@@ -342,8 +357,8 @@ public class MockRemoteTaskFactory
                     System.currentTimeMillis() + 100 - stats.getCreateTime().getMillis(),
                     queuedSplitsInfo.getWeightSum(),
                     combinedSplitsInfo.getWeightSum() - queuedSplitsInfo.getWeightSum(),
-                    ImmutableList.of(),
-                    false);
+                    unprocessedScheduledSplitBuilder.build(),
+                    isTaskIdling);
         }
 
         private void updateTaskStats()
@@ -420,6 +435,27 @@ public class MockRemoteTaskFactory
             updateSplitQueueSpace();
         }
 
+        public synchronized void setIsRetried()
+        {
+            isRetriedOnFailure = true;
+        }
+
+        public synchronized boolean isRetried()
+        {
+            return isRetriedOnFailure;
+        }
+
+        public boolean isTaskIdling()
+        {
+            return getTaskStatus().getIsTaskIdling();
+        }
+
+        @VisibleForTesting
+        public synchronized void markTaskIdling()
+        {
+            isTaskIdling = true;
+        }
+
         @Override
         public void start()
         {
@@ -454,6 +490,12 @@ public class MockRemoteTaskFactory
             if (allSourcesComplete) {
                 taskStateMachine.finished();
             }
+        }
+
+        @VisibleForTesting
+        public boolean noMoreSplitsReceived(PlanNodeId sourceId)
+        {
+            return noMoreSplits.contains(sourceId);
         }
 
         @Override
@@ -503,6 +545,11 @@ public class MockRemoteTaskFactory
         public void cancel()
         {
             taskStateMachine.cancel();
+        }
+
+        public void failed()
+        {
+            taskStateMachine.failed(new HostShuttingDownException("Simulate retriable error", 30000000));
         }
 
         @Override

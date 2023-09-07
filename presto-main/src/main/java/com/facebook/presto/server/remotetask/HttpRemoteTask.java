@@ -188,7 +188,7 @@ public final class HttpRemoteTask
     private OptionalLong whenSplitQueueHasSpaceThreshold = OptionalLong.empty();
 
     private final boolean summarizeTaskInfo;
-
+    private boolean isRetriedOnFailure;
     private final HttpClient httpClient;
     private final Executor executor;
     private final ScheduledExecutorService errorScheduledExecutor;
@@ -443,6 +443,12 @@ public final class HttpRemoteTask
     }
 
     @Override
+    public boolean isTaskIdling()
+    {
+        return getTaskStatus().getIsTaskIdling() && pendingSplits.isEmpty();
+    }
+
+    @Override
     public synchronized void addSplits(Multimap<PlanNodeId, Split> splitsBySource)
     {
         requireNonNull(splitsBySource, "splitsBySource is null");
@@ -664,6 +670,16 @@ public final class HttpRemoteTask
     public void addFinalTaskInfoListener(StateChangeListener<TaskInfo> stateChangeListener)
     {
         taskInfoFetcher.addFinalTaskInfoListener(stateChangeListener);
+    }
+
+    public synchronized void setIsRetried()
+    {
+        isRetriedOnFailure = true;
+    }
+
+    public synchronized boolean isRetried()
+    {
+        return isRetriedOnFailure;
     }
 
     @Override

@@ -38,6 +38,7 @@ import java.util.function.Supplier;
 
 import static com.facebook.presto.execution.StageExecutionState.ABORTED;
 import static com.facebook.presto.execution.StageExecutionState.CANCELED;
+import static com.facebook.presto.execution.StageExecutionState.DRAINING;
 import static com.facebook.presto.execution.StageExecutionState.FAILED;
 import static com.facebook.presto.execution.StageExecutionState.FINISHED;
 import static com.facebook.presto.execution.StageExecutionState.FINISHED_TASK_SCHEDULING;
@@ -138,6 +139,11 @@ public class StageExecutionStateMachine
     public boolean transitionToRunning()
     {
         return state.setIf(RUNNING, currentState -> currentState != RUNNING && !currentState.isDone());
+    }
+
+    public boolean transitionToDraining()
+    {
+        return state.setIf(DRAINING, currentState -> currentState == RUNNING);
     }
 
     public boolean transitionToFinished()
