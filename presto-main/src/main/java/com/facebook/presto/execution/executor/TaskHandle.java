@@ -13,9 +13,11 @@
  */
 package com.facebook.presto.execution.executor;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitConcurrencyController;
 import com.facebook.presto.execution.TaskId;
+import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.Duration;
 
@@ -25,17 +27,21 @@ import javax.annotation.concurrent.ThreadSafe;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.DoubleSupplier;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
+import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 @ThreadSafe
 public class TaskHandle
 {
+    private static final Logger log = Logger.get(TaskHandle.class);
     private volatile boolean destroyed;
     private final TaskId taskId;
     private final DoubleSupplier utilizationSupplier;
@@ -54,6 +60,9 @@ public class TaskHandle
     protected final SplitConcurrencyController concurrencyController;
 
     private final AtomicInteger nextSplitId = new AtomicInteger();
+    private final Optional<TaskShutdownListener> hostShutDownListener;
+    private final Optional<OutputBuffer> outputBuffer;
+    private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
     public TaskHandle(
             TaskId taskId,
@@ -63,6 +72,19 @@ public class TaskHandle
             Duration splitConcurrencyAdjustFrequency,
             OptionalInt maxDriversPerTask)
     {
+        this(taskId, priorityTracker, utilizationSupplier, initialSplitConcurrency, splitConcurrencyAdjustFrequency, maxDriversPerTask, Optional.empty(), Optional.empty());
+    }
+
+    public TaskHandle(
+            TaskId taskId,
+            TaskPriorityTracker priorityTracker,
+            DoubleSupplier utilizationSupplier,
+            int initialSplitConcurrency,
+            Duration splitConcurrencyAdjustFrequency,
+            OptionalInt maxDriversPerTask,
+            Optional<TaskShutdownListener> hostShutDownListener,
+            Optional<OutputBuffer> outputBuffer)
+    {
         this.taskId = requireNonNull(taskId, "taskId is null");
         this.utilizationSupplier = requireNonNull(utilizationSupplier, "utilizationSupplier is null");
         this.priorityTracker = requireNonNull(priorityTracker, "queryPriorityTracker is null");
@@ -70,6 +92,8 @@ public class TaskHandle
         this.concurrencyController = new SplitConcurrencyController(
                 initialSplitConcurrency,
                 requireNonNull(splitConcurrencyAdjustFrequency, "splitConcurrencyAdjustFrequency is null"));
+        this.hostShutDownListener = requireNonNull(hostShutDownListener, "hostShutDownListener is null");
+        this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
     }
 
     public synchronized Priority addScheduledNanos(long durationNanos)
@@ -125,8 +149,14 @@ public class TaskHandle
             return false;
         }
 
-        leafScheduledSplits.add(scheduledSplit);
-        queuedLeafSplits.add(split);
+        if (!isShuttingDown.get()) {
+            leafScheduledSplits.add(scheduledSplit);
+            queuedLeafSplits.add(split);
+        }
+        else {
+            checkState(!split.isSplitAlreadyStarted(), "Split we are avoiding to queue was already started!");
+        }
+
         return true;
     }
 
@@ -165,6 +195,12 @@ public class TaskHandle
             return null;
         }
 
+        if (isShuttingDown.get()) {
+            boolean isAnyQueuedSplitStarted = isAnySplitStarted(queuedLeafSplits);
+            checkState(!isAnyQueuedSplitStarted, "queued split contains started splits");
+            return null;
+        }
+
         if (runningLeafSplits.size() >= concurrencyController.getTargetConcurrency()) {
             return null;
         }
@@ -177,6 +213,34 @@ public class TaskHandle
         return split;
     }
 
+    private boolean isAnySplitStarted(Queue<PrioritizedSplitRunner> queuedLeafSplits)
+    {
+        for (PrioritizedSplitRunner splitRunner : queuedLeafSplits) {
+            if (splitRunner.isSplitAlreadyStarted()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void gracefulShutdown()
+    {
+        isShuttingDown.set(true);
+    }
+
+    public void handleShutDown()
+    {
+        if (!hostShutDownListener.isPresent()) {
+            return;
+        }
+        hostShutDownListener.get().handleShutdown(taskId);
+    }
+
+    public synchronized int getQueuedSplitSize()
+    {
+        return queuedLeafSplits.size();
+    }
+
     public synchronized void splitComplete(PrioritizedSplitRunner split)
     {
         concurrencyController.splitFinished(split.getScheduledNanos(), utilizationSupplier.getAsDouble(), runningLeafSplits.size());
@@ -187,6 +251,29 @@ public class TaskHandle
     public int getNextSplitId()
     {
         return nextSplitId.getAndIncrement();
+    }
+
+    public boolean isOutputBufferEmpty()
+    {
+        return outputBuffer.get().isAllPagesConsumed();
+    }
+
+    public Optional<OutputBuffer> getOutputBuffer()
+    {
+        return outputBuffer;
+    }
+
+    public boolean isShutdownInProgress()
+    {
+        return isShuttingDown.get();
+    }
+
+    public void updateTaskShutdownState(TaskShutdownStats taskShutdownStats)
+    {
+        if (!hostShutDownListener.isPresent()) {
+            return;
+        }
+        hostShutDownListener.get().addStats(taskShutdownStats);
     }
 
     @Override

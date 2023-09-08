@@ -365,6 +365,12 @@ public class LazyOutputBuffer
         return outputBuffer;
     }
 
+    @Override
+    public boolean isAllPagesConsumed()
+    {
+        return delegate.isAllPagesConsumed();
+    }
+
     private OutputBuffer getDelegateOutputBufferOrFail()
     {
         OutputBuffer outputBuffer = getDelegateOutputBuffer();

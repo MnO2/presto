@@ -296,6 +296,17 @@ public class PartitionedOutputBuffer
         return memoryManager.getPeakMemoryUsage();
     }
 
+    @Override
+    public boolean isAllPagesConsumed()
+    {
+        for (ClientBuffer partition : partitions) {
+            if (!partition.isEmptyPages()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @VisibleForTesting
     void forceFreeMemory()
     {

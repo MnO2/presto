@@ -24,6 +24,7 @@ import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.buffer.SpoolingOutputBufferFactory;
+import com.facebook.presto.execution.executor.TaskShutdownStats;
 import com.facebook.presto.execution.scheduler.TableWriteInfo;
 import com.facebook.presto.memory.QueryContext;
 import com.facebook.presto.metadata.MetadataUpdates;
@@ -278,6 +279,7 @@ public class SqlTask
         long fullGcTimeInMillis = 0L;
         long totalCpuTimeInNanos = 0L;
         List<ScheduledSplit> unprocessedSplits = ImmutableList.of();
+        Optional<TaskShutdownStats> hostShutdownStats = Optional.empty();
         boolean isTaskIdling = false;
 
         if (taskHolder.getFinalTaskInfo() != null) {
@@ -311,6 +313,7 @@ public class SqlTask
             completedDriverGroups = taskContext.getCompletedDriverGroups();
             fullGcCount = taskContext.getFullGcCount();
             fullGcTimeInMillis = taskContext.getFullGcTime().toMillis();
+            hostShutdownStats = taskContext.getHostShutdownStats();
             unprocessedSplits = taskHolder.getTaskExecution().getUnprocessedSplits();
             isTaskIdling = taskHolder.getTaskExecution().isTaskIdling();
         }

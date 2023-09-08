@@ -618,6 +618,12 @@ public class SpoolingOutputBuffer
         return isFinished();
     }
 
+    @Override
+    public boolean isAllPagesConsumed()
+    {
+        return pages.isEmpty();
+    }
+
     private long getPagesSize(Collection<SerializedPage> pages)
     {
         return pages.stream().mapToLong(SerializedPage::getRetainedSizeInBytes).sum();

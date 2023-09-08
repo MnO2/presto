@@ -373,6 +373,17 @@ public class ArbitraryOutputBuffer
         return memoryManager.getPeakMemoryUsage();
     }
 
+    @Override
+    public boolean isAllPagesConsumed()
+    {
+        for (ClientBuffer partition : buffers.values()) {
+            if (!partition.isEmptyPages()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @VisibleForTesting
     void forceFreeMemory()
     {

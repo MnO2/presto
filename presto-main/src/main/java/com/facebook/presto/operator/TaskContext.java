@@ -17,12 +17,14 @@ import com.facebook.airlift.stats.CounterStat;
 import com.facebook.airlift.stats.GcMonitor;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.RuntimeStats;
+import com.facebook.presto.common.RuntimeUnit;
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskMetadataContext;
 import com.facebook.presto.execution.TaskState;
 import com.facebook.presto.execution.TaskStateMachine;
 import com.facebook.presto.execution.buffer.LazyOutputBuffer;
+import com.facebook.presto.execution.executor.TaskShutdownStats;
 import com.facebook.presto.memory.QueryContext;
 import com.facebook.presto.memory.QueryContextVisitor;
 import com.facebook.presto.memory.VoidTraversingQueryContextVisitor;
@@ -135,6 +137,7 @@ public class TaskContext
     // Only contains metrics exposed in this task. Doesn't contain the metrics exposed in the operators.
     // This is merged with the operator metrics when generating the TaskStats in {@link #getTaskStats}.
     private final RuntimeStats runtimeStats = new RuntimeStats();
+    private Optional<TaskShutdownStats> hostShutdownStats = Optional.empty();
 
     public static TaskContext createTaskContext(
             QueryContext queryContext,
@@ -571,7 +574,26 @@ public class TaskContext
         }
 
         boolean fullyBlocked = hasRunningPipelines && runningPipelinesFullyBlocked;
-
+        if (hostShutdownStats.isPresent()) {
+            TaskId taskId = getTaskId();
+            StringBuilder taskIdentifier = new StringBuilder();
+            taskIdentifier.append(taskId.getStageExecutionId().getStageId().getId());
+            taskIdentifier.append(".");
+            taskIdentifier.append(taskId.getStageExecutionId().getId());
+            taskIdentifier.append(".");
+            taskIdentifier.append(taskId.getId());
+            taskIdentifier.append(".");
+            taskIdentifier.append(taskId.getAttemptNumber());
+            TaskShutdownStats taskShutdownStats = hostShutdownStats.get();
+            if (taskShutdownStats.getOutputBufferState().isPresent()) {
+                checkState(taskShutdownStats.getOutputBufferWaitTime().isPresent(), "Output buffer wait time is not recorded");
+                mergedRuntimeStats.addMetricValue(taskIdentifier + "-ob-" + taskShutdownStats.getOutputBufferState().get(), RuntimeUnit.NANO, taskShutdownStats.getOutputBufferWaitTime().getAsLong());
+            }
+            if (taskShutdownStats.getPendingRunningSplitState().isPresent()) {
+                checkState(taskShutdownStats.getPendingRunningSplitStateTime().isPresent(), "Split wait time is not recorded");
+                mergedRuntimeStats.addMetricValue(taskIdentifier + "-split-" + taskShutdownStats.getPendingRunningSplitState().get(), RuntimeUnit.NANO, taskShutdownStats.getPendingRunningSplitStateTime().getAsLong());
+            }
+        }
         return new TaskStats(
                 taskStateMachine.getCreatedTime(),
                 executionStartTime.get(),
@@ -756,5 +778,15 @@ public class TaskContext
         return searchFrom(taskPlan.get())
                 .where(node -> node.getId().equals(planNodeId) && nodeType.isInstance(node))
                 .findSingle();
+    }
+
+    public void updateHostShutdownStats(TaskShutdownStats hostShutdownStats)
+    {
+        this.hostShutdownStats = Optional.of(hostShutdownStats);
+    }
+
+    public Optional<TaskShutdownStats> getHostShutdownStats()
+    {
+        return hostShutdownStats;
     }
 }

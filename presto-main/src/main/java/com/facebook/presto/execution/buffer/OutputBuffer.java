@@ -137,4 +137,9 @@ public interface OutputBuffer
      * @return the peak memory usage of this output buffer.
      */
     long getPeakMemoryUsage();
+
+    /**
+     * @return if the buffer is fully drained in the graceful shutdown scenario
+     */
+    boolean isAllPagesConsumed();
 }

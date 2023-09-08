@@ -108,6 +108,11 @@ class ClientBuffer
         return destroyed;
     }
 
+    public boolean isEmptyPages()
+    {
+        return noMorePages && pages.isEmpty();
+    }
+
     public void destroy()
     {
         List<SerializedPageReference> removedPages;
