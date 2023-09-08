@@ -147,6 +147,8 @@ public final class SqlStageExecution
 
     private boolean schedulingCompleted;
 
+    private final boolean isRetryOfFailedSplitsEnabled;
+
     @GuardedBy("this")
     private Optional<StageTaskRecoveryCallback> stageTaskRecoveryCallback = Optional.empty();
 
@@ -160,7 +162,8 @@ public final class SqlStageExecution
             ExecutorService executor,
             FailureDetector failureDetector,
             SplitSchedulerStats schedulerStats,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            boolean isRetryOfFailedSplitsEnabled)
     {
         requireNonNull(stageExecutionId, "stageId is null");
         requireNonNull(fragment, "fragment is null");
@@ -182,7 +185,8 @@ public final class SqlStageExecution
                 executor,
                 failureDetector,
                 getMaxFailedTaskPercentage(session),
-                tableWriteInfo);
+                tableWriteInfo,
+                isRetryOfFailedSplitsEnabled);
         sqlStageExecution.initialize();
         return sqlStageExecution;
     }
@@ -197,7 +201,8 @@ public final class SqlStageExecution
             Executor executor,
             FailureDetector failureDetector,
             double maxFailedTaskPercentage,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            boolean isRetryOfFailedSplitsEnabled)
     {
         this.session = requireNonNull(session, "session is null");
         this.stateMachine = stateMachine;
@@ -209,6 +214,7 @@ public final class SqlStageExecution
         this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
         this.tableWriteInfo = requireNonNull(tableWriteInfo);
         this.maxFailedTaskPercentage = maxFailedTaskPercentage;
+        this.isRetryOfFailedSplitsEnabled = isRetryOfFailedSplitsEnabled;
 
         ImmutableMap.Builder<PlanFragmentId, RemoteSourceNode> fragmentToExchangeSource = ImmutableMap.builder();
         for (RemoteSourceNode remoteSourceNode : planFragment.getRemoteSourceNodes()) {

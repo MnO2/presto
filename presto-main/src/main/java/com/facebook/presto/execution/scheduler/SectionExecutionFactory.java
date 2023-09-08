@@ -127,6 +127,7 @@ public class SectionExecutionFactory
     private final NodeScheduler nodeScheduler;
     private final int splitBatchSize;
     private final boolean isEnableWorkerIsolation;
+    private final boolean isRetryOfFailedSplitsEnabled;
     private final InternalNodeManager nodeManager;
     @Inject
     public SectionExecutionFactory(
@@ -152,6 +153,7 @@ public class SectionExecutionFactory
                 nodeScheduler,
                 requireNonNull(queryManagerConfig, "queryManagerConfig is null").getScheduleSplitBatchSize(),
                 queryManagerConfig.isEnableWorkerIsolation(),
+                queryManagerConfig.isEnableRetryForFailedSplits(),
                 nodeManager);
     }
 
@@ -166,6 +168,7 @@ public class SectionExecutionFactory
             NodeScheduler nodeScheduler,
             int splitBatchSize,
             boolean isEnableWorkerIsolation,
+            boolean isRetryOfFailedSplitsEnabled,
             InternalNodeManager nodeManager)
     {
         this.metadata = requireNonNull(metadata, "metadata is null");
@@ -178,6 +181,7 @@ public class SectionExecutionFactory
         this.nodeScheduler = requireNonNull(nodeScheduler, "nodeScheduler is null");
         this.splitBatchSize = splitBatchSize;
         this.isEnableWorkerIsolation = isEnableWorkerIsolation;
+        this.isRetryOfFailedSplitsEnabled = isRetryOfFailedSplitsEnabled;
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
     }
 
@@ -244,7 +248,8 @@ public class SectionExecutionFactory
                 executor,
                 failureDetector,
                 schedulerStats,
-                tableWriteInfo);
+                tableWriteInfo,
+                isRetryOfFailedSplitsEnabled);
 
         PartitioningHandle partitioningHandle = plan.getFragment().getPartitioning();
         List<RemoteSourceNode> remoteSourceNodes = plan.getFragment().getRemoteSourceNodes();
@@ -321,7 +326,7 @@ public class SectionExecutionFactory
             NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, connectorId, maxTasksPerStage, nodePredicate);
             SplitPlacementPolicy placementPolicy = new DynamicSplitPlacementPolicy(nodeSelector, stageExecution::getAllTasks);
 
-            if (plan.getFragment().isLeaf()) {
+            if (plan.getFragment().isLeaf() && isRetryOfFailedSplitsEnabled) {
                 stageExecution.registerStageTaskRecoveryCallback((taskId, executionFailureInfos) -> {
                     Set<String> activeNodeIDs = nodeManager.getNodes(ACTIVE).stream().map(InternalNode::getNodeIdentifier).collect(toImmutableSet());
                     log.warn("Going to recover task - %s", taskId);

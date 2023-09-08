@@ -79,7 +79,8 @@ public class TestQueryManagerConfig
                 .setRateLimiterBucketMaxSize(100)
                 .setRateLimiterCacheLimit(1000)
                 .setRateLimiterCacheWindowMinutes(5)
-                .setEnableWorkerIsolation(false));
+                .setEnableWorkerIsolation(false)
+                .setEnableRetryForFailedSplits(true));
     }
 
     @Test
@@ -176,7 +177,8 @@ public class TestQueryManagerConfig
                 .setRateLimiterBucketMaxSize(200)
                 .setRateLimiterCacheLimit(10000)
                 .setRateLimiterCacheWindowMinutes(60)
-                .setEnableWorkerIsolation(true);
+                .setEnableWorkerIsolation(true)
+                .setEnableRetryForFailedSplits(false);
         ConfigAssertions.assertFullMapping(properties, expected);
     }
 }
