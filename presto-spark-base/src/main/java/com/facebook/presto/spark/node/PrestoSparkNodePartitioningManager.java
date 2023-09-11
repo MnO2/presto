@@ -60,7 +60,7 @@ public class PrestoSparkNodePartitioningManager
     }
 
     @Override
-    public BucketNodeMap getBucketNodeMap(Session session, PartitioningHandle partitioningHandle, boolean preferDynamic)
+    public BucketNodeMap getBucketNodeMap(Session session, PartitioningHandle partitioningHandle, boolean preferDynamic, Optional<Predicate<Node>> nodePredicate)
     {
         throw new UnsupportedOperationException("grouped execution is not supported in presto on spark");
     }
