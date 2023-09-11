@@ -111,7 +111,8 @@ public class NativeExecutionProcess
                 NATIVE_EXECUTION_TASK_ERROR_MESSAGE,
                 maxErrorDuration,
                 errorRetryScheduledExecutor,
-                "getting native process status");
+                "getting native process status",
+                false);
         this.workerProperty = requireNonNull(workerProperty, "workerProperty is null");
     }
 

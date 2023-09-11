@@ -21,6 +21,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.net.URI;
+import java.util.List;
 
 public interface RemoteTask
 {
@@ -39,6 +40,8 @@ public interface RemoteTask
 
     void start();
 
+    List<ScheduledSplit> getUnprocessedSplits();
+
     void addSplits(Multimap<PlanNodeId, Split> splits);
 
     void noMoreSplits(PlanNodeId sourceId);
@@ -46,6 +49,12 @@ public interface RemoteTask
     void noMoreSplits(PlanNodeId sourceId, Lifespan lifespan);
 
     void setOutputBuffers(OutputBuffers outputBuffers);
+
+    void setIsRetried();
+
+    boolean isRetried();
+
+    boolean isTaskIdling();
 
     ListenableFuture<?> removeRemoteSource(TaskId remoteSourceTaskId);
 

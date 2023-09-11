@@ -194,7 +194,7 @@ public final class HttpRemoteTask
     private OptionalLong whenSplitQueueHasSpaceThreshold = OptionalLong.empty();
 
     private final boolean summarizeTaskInfo;
-
+    private boolean isRetriedOnFailure;
     private final HttpClient httpClient;
     private final Executor executor;
     private final ScheduledExecutorService errorScheduledExecutor;
@@ -307,7 +307,7 @@ public final class HttpRemoteTask
             this.taskInfoJsonCodec = taskInfoJsonCodec;
             this.taskUpdateRequestCodec = taskUpdateRequestCodec;
             this.planFragmentCodec = planFragmentCodec;
-            this.updateErrorTracker = taskRequestErrorTracker(taskId, location, maxErrorDuration, errorScheduledExecutor, "updating task");
+            this.updateErrorTracker = taskRequestErrorTracker(taskId, location, maxErrorDuration, errorScheduledExecutor, "updating task", planFragment.isLeaf());
             this.nodeStatsTracker = requireNonNull(nodeStatsTracker, "nodeStatsTracker is null");
             this.maxErrorDuration = maxErrorDuration;
             this.stats = stats;
@@ -369,7 +369,8 @@ public final class HttpRemoteTask
                     stats,
                     binaryTransportEnabled,
                     thriftTransportEnabled,
-                    thriftProtocol);
+                    thriftProtocol,
+                    planFragment.isLeaf());
 
             this.taskInfoFetcher = new TaskInfoFetcher(
                     this::failTask,
@@ -451,6 +452,22 @@ public final class HttpRemoteTask
             taskStatusFetcher.start();
             taskInfoFetcher.start();
         }
+    }
+
+    @Override
+    public boolean isTaskIdling()
+    {
+        return unprocessedSplits.values().stream().allMatch(Map::isEmpty) && pendingSplits.isEmpty();
+    }
+
+    public List<ScheduledSplit> getUnprocessedSplits()
+    {
+        ImmutableList.Builder<ScheduledSplit> builder = ImmutableList.builder();
+        for (Long2ObjectMap<ScheduledSplit> m : unprocessedSplits.values()) {
+            builder.addAll(m.values());
+        }
+
+        return builder.build();
     }
 
     @Override
@@ -550,7 +567,8 @@ public final class HttpRemoteTask
                 remoteSourceUri,
                 maxErrorDuration,
                 errorScheduledExecutor,
-                "Remove exchange remote source");
+                "Remove exchange remote source",
+                planFragment.isLeaf());
 
         SettableFuture<?> future = SettableFuture.create();
         doRemoveRemoteSource(errorTracker, request, future);
@@ -652,11 +670,6 @@ public final class HttpRemoteTask
         return pendingSourceSplitCount;
     }
 
-    public Map<PlanNodeId, Long2ObjectMap<ScheduledSplit>> getUnprocessedSplits()
-    {
-        return unprocessedSplits;
-    }
-
     private long getQueuedPartitionedSplitsWeight()
     {
         TaskStatus taskStatus = getTaskStatus();
@@ -686,6 +699,16 @@ public final class HttpRemoteTask
         taskInfoFetcher.addFinalTaskInfoListener(stateChangeListener);
     }
 
+    public synchronized void setIsRetried()
+    {
+        isRetriedOnFailure = true;
+    }
+
+    public synchronized boolean isRetried()
+    {
+        return isRetriedOnFailure;
+    }
+
     @Override
     public synchronized ListenableFuture<?> whenSplitQueueHasSpace(long weightThreshold)
     {
@@ -713,7 +736,7 @@ public final class HttpRemoteTask
         }
     }
 
-    private void updateTaskStats()
+    private synchronized void updateTaskStats()
     {
         TaskStatus taskStatus = getTaskStatus();
         if (taskStatus.getState().isDone()) {
