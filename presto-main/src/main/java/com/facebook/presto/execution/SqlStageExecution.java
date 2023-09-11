@@ -98,6 +98,7 @@ public final class SqlStageExecution
             REMOTE_HOST_GONE.toErrorCode());
     private Optional<Set<ErrorCode>> recoveryErrorCodes = Optional.empty();
     public static final int DEFAULT_TASK_ATTEMPT_NUMBER = 0;
+    private static final int DELAY_NO_MORE_RETRY = 60_000;
 
     private final Session session;
     private final StageExecutionStateMachine stateMachine;

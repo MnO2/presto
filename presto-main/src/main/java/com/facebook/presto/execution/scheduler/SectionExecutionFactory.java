@@ -494,12 +494,26 @@ public class SectionExecutionFactory
         }
     }
 
+    private String getTaskIdentifier(com.facebook.presto.execution.TaskId failedTask)
+    {
+        return new StringBuilder(failedTask.getStageExecutionId().getStageId().getId())
+                .append(".")
+                .append(failedTask.getStageExecutionId().getId())
+                .append(".")
+                .append(failedTask.getId())
+                .append(".")
+                .append(failedTask.getAttemptNumber())
+                .toString();
+    }
+
     private Optional<Predicate<Node>> getNodePoolSelectionPredicate(StreamingSubPlan plan)
     {
-        if (!isEnableWorkerIsolation || plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution()) {
+        if (!isEnableWorkerIsolation) {
             //skipping node pool based selection for grouped execution
             return Optional.empty();
         }
+        //error out grouped execution query to clear the noise
+        checkArgument(!plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution(), "Grouped execution not supported");
         NodePoolType workerPoolType = plan.getFragment().isLeaf() ? LEAF : INTERMEDIATE;
         return Optional.of(node -> node.getPoolType().equals(workerPoolType));
     }

@@ -128,6 +128,11 @@ public class PrioritizedSplitRunner
         return createdNanos;
     }
 
+    public long getStartNanos()
+    {
+        return start.get();
+    }
+
     public boolean isFinished()
     {
         boolean finished = split.isFinished();
@@ -245,9 +250,22 @@ public class PrioritizedSplitRunner
         return splitId;
     }
 
+    public boolean isSplitAlreadyStarted()
+    {
+        return getStartNanos() != 0;
+    }
+
     public Priority getPriority()
     {
         return priority.get();
+    }
+
+    public long getSplitSequenceID()
+    {
+        if (split.getScheduledSplit() == null) {
+            return -1;
+        }
+        return split.getScheduledSplit().getSequenceId();
     }
 
     public String getInfo()
@@ -262,7 +280,7 @@ public class PrioritizedSplitRunner
                 (int) (waitNanos.get() / 1.0e6),
                 processCalls.get());
     }
-
+    
     @Override
     public String toString()
     {
