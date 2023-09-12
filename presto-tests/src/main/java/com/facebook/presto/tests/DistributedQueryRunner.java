@@ -52,16 +52,19 @@ import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Closer;
+import com.google.common.io.Files;
 import com.google.inject.Module;
 import io.airlift.units.Duration;
 import org.intellij.lang.annotations.Language;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -80,6 +83,7 @@ import static com.facebook.airlift.http.client.JsonResponseHandler.createJsonRes
 import static com.facebook.airlift.http.client.Request.Builder.prepareGet;
 import static com.facebook.airlift.json.JsonCodec.jsonCodec;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_USER;
+import static com.facebook.presto.common.type.encoding.StringUtils.UTF_8;
 import static com.facebook.presto.spi.NodePoolType.INTERMEDIATE;
 import static com.facebook.presto.spi.NodePoolType.LEAF;
 import static com.facebook.presto.testing.TestingSession.TESTING_CATALOG;
@@ -104,7 +108,10 @@ public class DistributedQueryRunner
     private static final String ENVIRONMENT = "testing";
     private static final String DEFAULT_USER = "user";
     private static final SqlParserOptions DEFAULT_SQL_PARSER_OPTIONS = new SqlParserOptions();
-
+    public static final String NODE_TYPE_WORKER = "worker";
+    public static final String NODE_TYPE_COORDINATOR = "coordinator";
+    public static final String NODE_TYPE_CATALOG_SERVER = "catalog_server";
+    public static final String NODE_TYPE_RM = "rm";
     private final TestingDiscoveryServer discoveryServer;
     private final List<TestingPrestoServer> coordinators;
     private final int coordinatorCount;
@@ -122,6 +129,7 @@ public class DistributedQueryRunner
     private Optional<List<TestingPrestoServer>> resourceManagers;
     private final int resourceManagerCount;
     private final AtomicReference<Handle> testFunctionNamespacesHandle = new AtomicReference<>();
+    private final Optional<String> nodeType;
 
     @Deprecated
     public DistributedQueryRunner(Session defaultSession, int nodeCount)
@@ -175,17 +183,58 @@ public class DistributedQueryRunner
             List<Module> extraModules)
             throws Exception
     {
+        this(resourceManagerEnabled, catalogServerEnabled, defaultSession, nodeCount, coordinatorCount, resourceManagerCount, extraProperties, coordinatorProperties, resourceManagerProperties, catalogServerProperties, parserOptions, environment, dataDirectory, externalWorkerLauncher, extraModules, Optional.empty());
+    }
+
+    private DistributedQueryRunner(
+            boolean resourceManagerEnabled,
+            boolean catalogServerEnabled,
+            Session defaultSession,
+            int nodeCount,
+            int coordinatorCount,
+            int resourceManagerCount,
+            Map<String, String> extraProperties,
+            Map<String, String> coordinatorProperties,
+            Map<String, String> resourceManagerProperties,
+            Map<String, String> catalogServerProperties,
+            SqlParserOptions parserOptions,
+            String environment,
+            Optional<Path> dataDirectory,
+            Optional<BiFunction<Integer, URI, Process>> externalWorkerLauncher,
+            List<Module> extraModules,
+            Optional<String> nodeType)
+            throws Exception
+    {
         requireNonNull(defaultSession, "defaultSession is null");
         this.extraModules = requireNonNull(extraModules, "extraModules is null");
+        this.nodeType = nodeType;
 
         try {
+            File tempFile = new File("/tmp/discovery");
             long start = nanoTime();
-            discoveryServer = new TestingDiscoveryServer(environment);
+            URI discoveryUrl = null;
+            if (!nodeType.isPresent() || nodeType.get().equals(NODE_TYPE_COORDINATOR)) {
+                discoveryServer = new TestingDiscoveryServer(environment);
+                if (tempFile.exists()) {
+                    tempFile.delete();
+                }
+                discoveryUrl = discoveryServer.getBaseUrl();
+                Files.write(discoveryUrl.toString(), tempFile, UTF_8);
+                closer.register(() -> closeUnchecked(discoveryServer));
+            }
+            else {
+                discoveryServer = null;
+            }
+
             this.coordinatorCount = coordinatorCount;
             this.resourceManagerCount = resourceManagerCount;
-            closer.register(() -> closeUnchecked(discoveryServer));
             log.info("Created TestingDiscoveryServer in %s", nanosSince(start).convertToMostSuccinctTimeUnit());
-            URI discoveryUrl = discoveryServer.getBaseUrl();
+            if (discoveryUrl == null) {
+                //fetch from file
+                List<String> discoveryURL = Files.readLines(tempFile, UTF_8);
+                checkArgument(discoveryURL.size() == 1, "discoveryURL data is corrupted");
+                discoveryUrl = new URI(discoveryURL.get(0));
+            }
             log.info("Discovery URL %s", discoveryUrl);
 
             ImmutableList.Builder<TestingPrestoServer> servers = ImmutableList.builder();
@@ -210,10 +259,16 @@ public class DistributedQueryRunner
             }
             else {
                 externalWorkers = ImmutableList.of();
-
-                for (int i = (coordinatorCount + (resourceManagerEnabled ? resourceManagerCount : 0)); i < nodeCount; i++) {
-                    // We are simply splitting the nodes into leaf and intermediate for testing purpose
-                    NodePoolType workerPool = i % 2 == 0 ? LEAF : INTERMEDIATE;
+                boolean isOnlyWorkers = nodeType.map(type -> type.contains(NODE_TYPE_WORKER)).orElse(false);
+                int usedNodes = isOnlyWorkers ? 0 : coordinatorCount + (resourceManagerEnabled ? resourceManagerCount : 0);
+                for (int i = usedNodes; i < nodeCount; i++) {
+                    NodePoolType workerPool = null;
+                    if (nodeType.isPresent()) {
+                        workerPool = NodePoolType.valueOf(nodeType.get().split("-")[1]);
+                    }
+                    else {
+                        workerPool = i % 2 == 0 ? LEAF : INTERMEDIATE;
+                    }
                     Map<String, String> workerProperties = new HashMap<>(extraProperties);
                     workerProperties.put("pool-type", workerPool.name());
                     TestingPrestoServer worker = closer.register(createTestingPrestoServer(
@@ -236,7 +291,7 @@ public class DistributedQueryRunner
             extraCoordinatorProperties.putAll(extraProperties);
             extraCoordinatorProperties.putAll(coordinatorProperties);
 
-            if (resourceManagerEnabled) {
+            if (resourceManagerEnabled && nodeType.map(type -> type.equals(NODE_TYPE_RM)).orElse(true)) {
                 for (int i = 0; i < resourceManagerCount; i++) {
                     Map<String, String> rmProperties = new HashMap<>(resourceManagerProperties);
                     if (resourceManagerProperties.get("raft.isEnabled") != null) {
@@ -260,7 +315,7 @@ public class DistributedQueryRunner
                 }
             }
 
-            if (catalogServerEnabled) {
+            if (catalogServerEnabled && (!nodeType.isPresent() || nodeType.get().equals(NODE_TYPE_CATALOG_SERVER))) {
                 catalogServer = Optional.of(closer.register(createTestingPrestoServer(
                         discoveryUrl,
                         false,
@@ -276,22 +331,24 @@ public class DistributedQueryRunner
                 servers.add(catalogServer.get());
             }
 
-            for (int i = 0; i < coordinatorCount; i++) {
-                TestingPrestoServer coordinator = closer.register(createTestingPrestoServer(
-                        discoveryUrl,
-                        false,
-                        resourceManagerEnabled,
-                        false,
-                        catalogServerEnabled,
-                        true,
-                        extraCoordinatorProperties,
-                        parserOptions,
-                        environment,
-                        dataDirectory,
-                        extraModules));
-                servers.add(coordinator);
-                coordinators.add(coordinator);
-                extraCoordinatorProperties.remove("http-server.http.port");
+            if (!nodeType.isPresent() || nodeType.get().equals(NODE_TYPE_COORDINATOR)) {
+                for (int i = 0; i < coordinatorCount; i++) {
+                    TestingPrestoServer coordinator = closer.register(createTestingPrestoServer(
+                            discoveryUrl,
+                            false,
+                            resourceManagerEnabled,
+                            false,
+                            catalogServerEnabled,
+                            true,
+                            extraCoordinatorProperties,
+                            parserOptions,
+                            environment,
+                            dataDirectory,
+                            extraModules));
+                    servers.add(coordinator);
+                    coordinators.add(coordinator);
+                    extraCoordinatorProperties.remove("http-server.http.port");
+                }
             }
 
             this.servers = servers.build();
@@ -307,14 +364,19 @@ public class DistributedQueryRunner
             }
         }
 
-        // copy session using property manager in coordinator
-        defaultSession = defaultSession.toSessionRepresentation().toSession(coordinators.get(0).getMetadata().getSessionPropertyManager());
+        if (!nodeType.isPresent() || nodeType.get().equals(NODE_TYPE_COORDINATOR)) {
+            // copy session using property manager in coordinator
+            defaultSession = defaultSession.toSessionRepresentation().toSession(coordinators.get(0).getMetadata().getSessionPropertyManager());
 
-        ImmutableList.Builder<TestingPrestoClient> prestoClientsBuilder = ImmutableList.builder();
-        for (int i = 0; i < coordinatorCount; i++) {
-            prestoClientsBuilder.add(closer.register(new TestingPrestoClient(coordinators.get(i), defaultSession)));
+            ImmutableList.Builder<TestingPrestoClient> prestoClientsBuilder = ImmutableList.builder();
+            for (int i = 0; i < coordinatorCount; i++) {
+                prestoClientsBuilder.add(closer.register(new TestingPrestoClient(coordinators.get(i), defaultSession)));
+            }
+            prestoClients = prestoClientsBuilder.build();
         }
-        prestoClients = prestoClientsBuilder.build();
+        else {
+            prestoClients = new ArrayList<>();
+        }
 
         long start = nanoTime();
         while (!allNodesGloballyVisible()) {
@@ -325,7 +387,7 @@ public class DistributedQueryRunner
 
         start = nanoTime();
         for (TestingPrestoServer server : servers) {
-            server.getMetadata().registerBuiltInFunctions(AbstractTestQueries.CUSTOM_FUNCTIONS);
+//            server.getMetadata().registerBuiltInFunctions(AbstractTestQueries.CUSTOM_FUNCTIONS);
         }
         log.info("Added functions in %s", nanosSince(start).convertToMostSuccinctTimeUnit());
 
@@ -784,7 +846,7 @@ public class DistributedQueryRunner
     }
 
     @Override
-    public final synchronized void close()
+    public final void close()
     {
         cancelAllQueries();
         try {
@@ -959,6 +1021,12 @@ public class DistributedQueryRunner
         public Builder setEnvironment(String environment)
         {
             this.environment = environment;
+            return this;
+        }
+
+        public Builder setNodeType(Optional<String> nodeType)
+        {
+            this.nodeType = nodeType;
             return this;
         }
 
