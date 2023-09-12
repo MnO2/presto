@@ -535,8 +535,8 @@ public class ServerMainModule
         jsonCodecBinder(binder).bindJsonCodec(TableWriteInfo.class);
         smileCodecBinder(binder).bindSmileCodec(TaskStatus.class);
         smileCodecBinder(binder).bindSmileCodec(TaskInfo.class);
-        thriftCodecBinder(binder).bindThriftCodec(TaskStatus.class);
-        thriftCodecBinder(binder).bindThriftCodec(TaskInfo.class);
+//        thriftCodecBinder(binder).bindThriftCodec(TaskStatus.class);
+//        thriftCodecBinder(binder).bindThriftCodec(TaskInfo.class);
         jaxrsBinder(binder).bind(PagesResponseWriter.class);
 
         // exchange client
