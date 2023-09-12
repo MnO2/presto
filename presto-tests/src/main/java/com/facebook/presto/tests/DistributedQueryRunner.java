@@ -83,7 +83,6 @@ import static com.facebook.airlift.http.client.JsonResponseHandler.createJsonRes
 import static com.facebook.airlift.http.client.Request.Builder.prepareGet;
 import static com.facebook.airlift.json.JsonCodec.jsonCodec;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_USER;
-import static com.facebook.presto.common.type.encoding.StringUtils.UTF_8;
 import static com.facebook.presto.spi.NodePoolType.INTERMEDIATE;
 import static com.facebook.presto.spi.NodePoolType.LEAF;
 import static com.facebook.presto.testing.TestingSession.TESTING_CATALOG;
@@ -93,10 +92,12 @@ import static com.facebook.presto.tests.AbstractTestQueries.TEST_SYSTEM_PROPERTI
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.throwIfUnchecked;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.airlift.units.Duration.nanosSince;
 import static java.lang.String.format;
 import static java.lang.System.nanoTime;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -225,7 +226,6 @@ public class DistributedQueryRunner
             else {
                 discoveryServer = null;
             }
-
             this.coordinatorCount = coordinatorCount;
             this.resourceManagerCount = resourceManagerCount;
             log.info("Created TestingDiscoveryServer in %s", nanosSince(start).convertToMostSuccinctTimeUnit());
@@ -269,20 +269,21 @@ public class DistributedQueryRunner
                     else {
                         workerPool = i % 2 == 0 ? LEAF : INTERMEDIATE;
                     }
+
                     Map<String, String> workerProperties = new HashMap<>(extraProperties);
                     workerProperties.put("pool-type", workerPool.name());
                     TestingPrestoServer worker = closer.register(createTestingPrestoServer(
-                                    discoveryUrl,
-                                    false,
-                                    resourceManagerEnabled,
-                                    false,
-                                    catalogServerEnabled,
-                                    false,
-                                    workerProperties,
-                                    parserOptions,
-                                    environment,
-                                    dataDirectory,
-                                    extraModules));
+                            discoveryUrl,
+                            false,
+                            resourceManagerEnabled,
+                            false,
+                            catalogServerEnabled,
+                            false,
+                            workerProperties,
+                            parserOptions,
+                            environment,
+                            dataDirectory,
+                            extraModules));
                     servers.add(worker);
                 }
             }
@@ -330,7 +331,6 @@ public class DistributedQueryRunner
                         extraModules)));
                 servers.add(catalogServer.get());
             }
-
             if (!nodeType.isPresent() || nodeType.get().equals(NODE_TYPE_COORDINATOR)) {
                 for (int i = 0; i < coordinatorCount; i++) {
                     TestingPrestoServer coordinator = closer.register(createTestingPrestoServer(
@@ -363,7 +363,6 @@ public class DistributedQueryRunner
                 closer.close();
             }
         }
-
         if (!nodeType.isPresent() || nodeType.get().equals(NODE_TYPE_COORDINATOR)) {
             // copy session using property manager in coordinator
             defaultSession = defaultSession.toSessionRepresentation().toSession(coordinators.get(0).getMetadata().getSessionPropertyManager());
@@ -387,7 +386,7 @@ public class DistributedQueryRunner
 
         start = nanoTime();
         for (TestingPrestoServer server : servers) {
-//            server.getMetadata().registerBuiltInFunctions(AbstractTestQueries.CUSTOM_FUNCTIONS);
+            server.getMetadata().registerBuiltInFunctions(AbstractTestQueries.CUSTOM_FUNCTIONS);
         }
         log.info("Added functions in %s", nanosSince(start).convertToMostSuccinctTimeUnit());
 
@@ -634,7 +633,7 @@ public class DistributedQueryRunner
 
     public List<TestingPrestoServer> getCoordinatorWorkers()
     {
-        return getServers().stream().filter(server -> !server.isResourceManager()).collect(ImmutableList.toImmutableList());
+        return getServers().stream().filter(server -> !server.isResourceManager()).collect(toImmutableList());
     }
 
     public List<TestingPrestoServer> getServers()
@@ -683,7 +682,7 @@ public class DistributedQueryRunner
     public void loadFunctionNamespaceManager(String functionNamespaceManagerName, String catalogName, Map<String, String> properties)
     {
         for (TestingPrestoServer server : servers) {
-            server.getMetadata().getFunctionAndTypeManager().loadFunctionNamespaceManager(functionNamespaceManagerName, catalogName, properties);
+            //server.getMetadata().getFunctionAndTypeManager().loadFunctionNamespaceManager(functionNamespaceManagerName, catalogName, properties);
         }
     }
 
@@ -1084,7 +1083,8 @@ public class DistributedQueryRunner
                     environment,
                     dataDirectory,
                     externalWorkerLauncher,
-                    extraModules);
+                    extraModules,
+                    nodeType);
         }
     }
 }
