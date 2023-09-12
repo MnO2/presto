@@ -143,7 +143,7 @@ public class HttpRemoteTaskFactory
         this.maxTaskUpdateSizeInBytes = toIntExact(requireNonNull(communicationConfig, "communicationConfig is null").getMaxTaskUpdateSize().toBytes());
 
         if (thriftTransportEnabled) {
-            this.taskStatusCodec = null; //wrapThriftCodec(taskStatusThriftCodec);
+            this.taskStatusCodec = taskStatusJsonCodec; //wrapThriftCodec(taskStatusThriftCodec);
         }
         else if (binaryTransportEnabled) {
             this.taskStatusCodec = taskStatusSmileCodec;
@@ -153,7 +153,7 @@ public class HttpRemoteTaskFactory
         }
 
         if (taskInfoThriftTransportEnabled) {
-            this.taskInfoCodec = null; //wrapThriftCodec(taskInfoThriftCodec);
+            this.taskInfoCodec = taskInfoJsonCodec; //wrapThriftCodec(taskInfoThriftCodec);
         }
         else if (binaryTransportEnabled) {
             this.taskInfoCodec = taskInfoSmileCodec;
