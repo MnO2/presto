@@ -16,6 +16,7 @@ package com.facebook.presto.execution.executor;
 import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.stats.CounterStat;
 import com.facebook.airlift.stats.TimeStat;
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitRunner;
 import com.google.common.base.Ticker;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -24,6 +25,7 @@ import io.airlift.units.Duration;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -135,6 +137,11 @@ public class PrioritizedSplitRunner
     public boolean isSplitAlreadyStarted()
     {
         return getStartNanos() != 0;
+    }
+
+    public Optional<ScheduledSplit> getScheduledSplit()
+    {
+        return split.getScheduledSplit();
     }
 
     public boolean isFinished()

@@ -246,14 +246,14 @@ public class SqlTask
         }
     }
 
-    public TaskStatus getTaskStatus()
+    public TaskStatus getTaskStatus(boolean includeUnprocessedSplits)
     {
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskId)) {
-            return createTaskStatus(taskHolderReference.get());
+            return createTaskStatus(taskHolderReference.get(), includeUnprocessedSplits);
         }
     }
 
-    private TaskStatus createTaskStatus(TaskHolder taskHolder)
+    private TaskStatus createTaskStatus(TaskHolder taskHolder, boolean includeUnprocessedSplits)
     {
         long taskStatusAgeInMillis = System.currentTimeMillis() - creationTimeInMillis;
         // Always return a new TaskInfo with a larger version number;
@@ -396,7 +396,7 @@ public class SqlTask
         Set<PlanNodeId> noMoreSplits = getNoMoreSplits(taskHolder);
         MetadataUpdates metadataRequests = getMetadataUpdateRequests(taskHolder);
 
-        TaskStatus taskStatus = createTaskStatus(taskHolder);
+        TaskStatus taskStatus = createTaskStatus(taskHolder, false);
         return new TaskInfo(
                 taskStateMachine.getTaskId(),
                 taskStatus,
@@ -409,16 +409,16 @@ public class SqlTask
                 nodeId);
     }
 
-    public ListenableFuture<TaskStatus> getTaskStatus(TaskState callersCurrentState)
+    public ListenableFuture<TaskStatus> getTaskStatus(TaskState callersCurrentState, boolean includeUnprocessedSplits)
     {
         requireNonNull(callersCurrentState, "callersCurrentState is null");
 
         if (callersCurrentState.isDone()) {
-            return immediateFuture(getTaskStatus());
+            return immediateFuture(getTaskStatus(includeUnprocessedSplits));
         }
 
         ListenableFuture<TaskState> futureTaskState = taskStateMachine.getStateChange(callersCurrentState);
-        return Futures.transform(futureTaskState, input -> getTaskStatus(), directExecutor());
+        return Futures.transform(futureTaskState, input -> getTaskStatus(includeUnprocessedSplits), directExecutor());
     }
 
     public ListenableFuture<TaskInfo> getTaskInfo(TaskState callersCurrentState)

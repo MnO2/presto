@@ -41,6 +41,7 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.Duration;
+import org.apache.ratis.thirdparty.org.checkerframework.checker.nullness.Opt;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
@@ -622,7 +623,9 @@ public class SqlTaskExecution
 
     public List<ScheduledSplit> getUnprocessedSplits()
     {
-        return taskHandle.getUnprocessedSplits();
+        List<ScheduledSplit> unprocessedSplits = taskHandle.getUnprocessedSplits();
+        unprocessedSplits.addAll(taskExecutor.getLeafSplitsNotYetStarted(taskId));
+        return unprocessedSplits;
     }
 
     public boolean isTaskIdling()
@@ -1107,6 +1110,12 @@ public class SqlTaskExecution
         public String getInfo()
         {
             return (partitionedSplit == null) ? "" : partitionedSplit.getSplit().getInfo().toString();
+        }
+
+        @Override
+        public Optional<ScheduledSplit> getScheduledSplit()
+        {
+            return Optional.ofNullable(partitionedSplit);
         }
 
         @Override

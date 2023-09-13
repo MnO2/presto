@@ -36,6 +36,7 @@ import org.testng.annotations.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.Future;
 import java.util.concurrent.Phaser;
@@ -618,6 +619,12 @@ public class TestTaskExecutor
         }
 
         @Override
+        public Optional<ScheduledSplit> getScheduledSplit()
+        {
+            return Optional.empty();
+        }
+
+        @Override
         public void close()
         {
         }
@@ -658,6 +665,12 @@ public class TestTaskExecutor
         public String getInfo()
         {
             return "";
+        }
+
+        @Override
+        public Optional<ScheduledSplit> getScheduledSplit()
+        {
+            return Optional.empty();
         }
 
         @Override

@@ -14,6 +14,7 @@
 package com.facebook.presto.execution.executor;
 
 import com.facebook.airlift.stats.CounterStat;
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.google.common.annotations.VisibleForTesting;
@@ -296,6 +297,29 @@ public class MultilevelSplitQueue
                 }
             }
             return true;
+        }
+        finally {
+            lock.unlock();
+        }
+    }
+
+    public List<ScheduledSplit> getLeafSplitsNotYetStarted(TaskId taskId)
+    {
+        lock.lock();
+        try {
+            ImmutableList.Builder<ScheduledSplit> builder = ImmutableList.builder();
+            for (PriorityQueue<PrioritizedSplitRunner> level : levelWaitingSplits) {
+                for (PrioritizedSplitRunner split : level) {
+                    if (!split.getTaskHandle().getTaskId().equals(taskId)) {
+                        continue;
+                    }
+                    if (!isSplitAlreadyStarted(split) && split.getScheduledSplit().isPresent()) {
+                        builder.add(split.getScheduledSplit().get());
+                    }
+                }
+            }
+
+            return builder.build();
         }
         finally {
             lock.unlock();

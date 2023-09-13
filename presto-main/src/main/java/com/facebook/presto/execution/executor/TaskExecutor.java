@@ -283,6 +283,11 @@ public class TaskExecutor
         return waitingSplits.isEligibleForGracefulShutdown(taskId, blockedSplits.keySet(), runningSplits);
     }
 
+    public List<ScheduledSplit> getLeafSplitsNotYetStarted(TaskId taskId)
+    {
+        return waitingSplits.getLeafSplitsNotYetStarted(taskId);
+    }
+
     @VisibleForTesting
     public TaskExecutor(
             int runnerThreads,

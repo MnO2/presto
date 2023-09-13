@@ -174,9 +174,9 @@ public class TaskHandle
         return runningLeafSplits.size();
     }
 
-    public List<ScheduledSplit> getUnprocessedSplits()
+    public synchronized List<ScheduledSplit> getUnprocessedSplits()
     {
-        return leafScheduledSplits;
+        return new ArrayList<>(leafScheduledSplits);
     }
 
     public boolean isTaskIdling()

@@ -17,6 +17,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.Duration;
 
 import java.io.Closeable;
+import java.util.Optional;
 
 public interface SplitRunner
         extends Closeable
@@ -26,7 +27,7 @@ public interface SplitRunner
     ListenableFuture<?> processFor(Duration duration);
 
     String getInfo();
-
+    Optional<ScheduledSplit> getScheduledSplit();
     @Override
     void close();
 }

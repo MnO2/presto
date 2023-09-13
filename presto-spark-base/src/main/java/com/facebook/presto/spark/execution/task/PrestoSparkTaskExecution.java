@@ -498,6 +498,12 @@ public class PrestoSparkTaskExecution
         }
 
         @Override
+        public Optional<ScheduledSplit> getScheduledSplit()
+        {
+            return Optional.empty();
+        }
+
+        @Override
         public void close()
         {
             Driver driver;

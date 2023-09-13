@@ -13,12 +13,14 @@
  */
 package com.facebook.presto.execution.executor;
 
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitRunner;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.Duration;
 
+import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -209,6 +211,12 @@ abstract class SimulationSplit
                     succinctNanos(super.scheduledTimeNanos),
                     succinctNanos(perQuantaNanos));
         }
+
+        @Override
+        public Optional<ScheduledSplit> getScheduledSplit()
+        {
+            return Optional.empty();
+        }
     }
 
     static class IntermediateSplit
@@ -287,6 +295,12 @@ abstract class SimulationSplit
                     succinctNanos(wallTimeNanos),
                     succinctNanos(perQuantaNanos),
                     succinctNanos(betweenQuantaNanos));
+        }
+
+        @Override
+        public Optional<ScheduledSplit> getScheduledSplit()
+        {
+            return Optional.empty();
         }
     }
 }

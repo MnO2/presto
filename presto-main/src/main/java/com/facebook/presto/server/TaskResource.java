@@ -112,6 +112,7 @@ public class TaskResource
     private final Codec<PlanFragment> planFragmentCodec;
     private final HandleResolver handleResolver;
     private final ConnectorTypeSerdeManager connectorTypeSerdeManager;
+    private final GracefulShutdownHandler shutdownHandler;
 
     @Inject
     public TaskResource(
@@ -123,7 +124,8 @@ public class TaskResource
             SmileCodec<PlanFragment> planFragmentSmileCodec,
             InternalCommunicationConfig communicationConfig,
             HandleResolver handleResolver,
-            ConnectorTypeSerdeManager connectorTypeSerdeManager)
+            ConnectorTypeSerdeManager connectorTypeSerdeManager,
+            GracefulShutdownHandler shutdownHandler)
     {
         this.taskManager = requireNonNull(taskManager, "taskManager is null");
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
@@ -132,6 +134,7 @@ public class TaskResource
         this.planFragmentCodec = planFragmentJsonCodec;
         this.handleResolver = requireNonNull(handleResolver, "handleResolver is null");
         this.connectorTypeSerdeManager = requireNonNull(connectorTypeSerdeManager, "connectorTypeSerdeManager is null");
+        this.shutdownHandler = requireNonNull(shutdownHandler, "shutdownHandler is null");
     }
 
     @GET
@@ -234,9 +237,9 @@ public class TaskResource
             @Suspended AsyncResponse asyncResponse)
     {
         requireNonNull(taskId, "taskId is null");
-
+        boolean isShutdownRequested= shutdownHandler.isShutdownRequested();
         if (currentState == null || maxWait == null) {
-            TaskStatus taskStatus = taskManager.getTaskStatus(taskId);
+            TaskStatus taskStatus = taskManager.getTaskStatus(taskId, isShutdownRequested);
             asyncResponse.resume(taskStatus);
             return;
         }
@@ -246,8 +249,8 @@ public class TaskResource
         // leading to a slight delay of approx 1 second, which is not a major issue for any query that are heavy weight enough
         // to justify group-by-group execution. In order to fix this, REST endpoint /v1/{task}/status will need change.
         ListenableFuture<TaskStatus> futureTaskStatus = addTimeout(
-                taskManager.getTaskStatus(taskId, currentState),
-                () -> taskManager.getTaskStatus(taskId),
+                taskManager.getTaskStatus(taskId, currentState, isShutdownRequested),
+                () -> taskManager.getTaskStatus(taskId, isShutdownRequested),
                 waitTime,
                 timeoutExecutor);
 
