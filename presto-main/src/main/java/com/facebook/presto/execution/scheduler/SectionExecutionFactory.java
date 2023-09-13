@@ -352,6 +352,8 @@ public class SectionExecutionFactory
 
                     synchronized (stageExecution) {
                         List<ScheduledSplit> unprocessedSplits = failedRemoteTask.getTaskStatus().getUnprocessedSplits();
+                        unprocessedSplits.addAll(failedRemoteTask.getPendingScheduledSplits());
+
                         Iterator<List<Split>> splits = Iterables.partition(
                                 Iterables.transform(unprocessedSplits.stream().filter(scheduledSplit -> scheduledSplit.getPlanNodeId() == planNodeId).collect(toList()), ScheduledSplit::getSplit),
                                 SPLIT_RETRY_BATCH_SIZE).iterator();

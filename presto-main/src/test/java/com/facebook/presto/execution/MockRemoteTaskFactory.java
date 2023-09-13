@@ -606,5 +606,11 @@ public class MockRemoteTaskFactory
         {
             return unacknowledgedSplits;
         }
+
+        @Override
+        public Collection<ScheduledSplit> getPendingScheduledSplits()
+        {
+            return new ArrayList<>();
+        }
     }
 }

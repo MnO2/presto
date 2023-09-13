@@ -41,7 +41,6 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.Duration;
-import org.apache.ratis.thirdparty.org.checkerframework.checker.nullness.Opt;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;

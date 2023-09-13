@@ -53,6 +53,7 @@ import com.facebook.presto.metadata.MetadataUpdates;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.TaskStats;
 import com.facebook.presto.server.RequestErrorTracker;
+import com.facebook.presto.server.ServiceGoneException;
 import com.facebook.presto.server.SimpleHttpResponseCallback;
 import com.facebook.presto.server.SimpleHttpResponseHandler;
 import com.facebook.presto.server.TaskUpdateRequest;
@@ -1105,6 +1106,12 @@ public final class HttpRemoteTask
                 .toString();
     }
 
+    @Override
+    public Collection<ScheduledSplit> getPendingScheduledSplits()
+    {
+        return pendingSplits.values();
+    }
+
     private class UpdateResponseHandler
             implements SimpleHttpResponseCallback<TaskInfo>
     {
@@ -1148,8 +1155,10 @@ public final class HttpRemoteTask
                     }
                     updateStats(currentRequestStartNanos);
 
-                    // on failure assume we need to update again
-                    needsUpdate.set(true);
+                    if (!(cause instanceof ServiceGoneException)) {
+                        // on failure assume we need to update again
+                        needsUpdate.set(true);
+                    }
 
                     // if task not already done, record error
                     TaskStatus taskStatus = getTaskStatus();
@@ -1165,7 +1174,9 @@ public final class HttpRemoteTask
                     failTask(e);
                 }
                 finally {
-                    sendUpdate();
+                    if (!(cause instanceof ServiceGoneException)) {
+                        sendUpdate();
+                    }
                 }
             }
         }

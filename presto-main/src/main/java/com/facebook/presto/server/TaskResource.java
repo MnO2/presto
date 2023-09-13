@@ -156,6 +156,11 @@ public class TaskResource
     public Response createOrUpdateTask(@PathParam("taskId") TaskId taskId, TaskUpdateRequest taskUpdateRequest, @Context UriInfo uriInfo)
     {
         requireNonNull(taskUpdateRequest, "taskUpdateRequest is null");
+        boolean isShutdownRequested = shutdownHandler.isShutdownRequested();
+
+        if (isShutdownRequested) {
+            return Response.status(Status.GONE).build();
+        }
 
         Session session = taskUpdateRequest.getSession().toSession(sessionPropertyManager, taskUpdateRequest.getExtraCredentials());
         TaskInfo taskInfo = taskManager.updateTask(session,
@@ -237,7 +242,7 @@ public class TaskResource
             @Suspended AsyncResponse asyncResponse)
     {
         requireNonNull(taskId, "taskId is null");
-        boolean isShutdownRequested= shutdownHandler.isShutdownRequested();
+        boolean isShutdownRequested = shutdownHandler.isShutdownRequested();
         if (currentState == null || maxWait == null) {
             TaskStatus taskStatus = taskManager.getTaskStatus(taskId, isShutdownRequested);
             asyncResponse.resume(taskStatus);

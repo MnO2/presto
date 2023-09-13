@@ -21,6 +21,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.net.URI;
+import java.util.Collection;
 
 public interface RemoteTask
 {
@@ -81,4 +82,6 @@ public interface RemoteTask
     PartitionedSplitsInfo getQueuedPartitionedSplitsInfo();
 
     int getUnacknowledgedPartitionedSplitCount();
+
+    Collection<ScheduledSplit> getPendingScheduledSplits();
 }
