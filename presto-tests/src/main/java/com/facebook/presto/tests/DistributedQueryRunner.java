@@ -241,7 +241,7 @@ public class DistributedQueryRunner
             ImmutableList.Builder<TestingPrestoServer> coordinators = ImmutableList.builder();
             ImmutableList.Builder<TestingPrestoServer> resourceManagers = ImmutableList.builder();
             Map<String, String> extraCoordinatorProperties = new HashMap<>();
-
+            extraCoordinatorProperties.put("pool-type", LEAF.name());
             if (externalWorkerLauncher.isPresent()) {
                 ImmutableList.Builder<Process> externalWorkersBuilder = ImmutableList.builder();
                 for (int i = 0; i < nodeCount; i++) {
