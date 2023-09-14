@@ -314,7 +314,11 @@ public class SqlTask
             fullGcCount = taskContext.getFullGcCount();
             fullGcTimeInMillis = taskContext.getFullGcTime().toMillis();
             hostShutdownStats = taskContext.getHostShutdownStats();
-            unprocessedSplits = taskHolder.getTaskExecution().getUnprocessedSplits();
+
+            if (includeUnprocessedSplits) {
+                unprocessedSplits = taskHolder.getTaskExecution().getUnprocessedSplits();
+            }
+
             isTaskIdling = taskHolder.getTaskExecution().isTaskIdling();
         }
 
