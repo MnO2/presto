@@ -190,6 +190,7 @@ public class TaskExecutor
     private volatile boolean closed;
     private final ExecutorService taskShutdownExecutor = newCachedThreadPool(daemonThreadsNamed("task-shutdown-%s"));
     private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+    private final AtomicBoolean isShutDownCompleted = new AtomicBoolean(false);
 
     @Inject
     public TaskExecutor(TaskManagerConfig config, EmbedVersion embedVersion, MultilevelSplitQueue splitQueue)
@@ -276,6 +277,7 @@ public class TaskExecutor
         Duration shutdownTime = Duration.nanosSince(shutdownStartTime);
         log.info("Waiting for shutdown of all tasks over in %s milli sec", shutdownTime.toMillis());
         taskExecutorShutdownTime.add(shutdownTime);
+        isShutDownCompleted.set(true);
     }
 
     private boolean isEligibleForGracefulShutdown(TaskId taskId)
@@ -693,6 +695,18 @@ public class TaskExecutor
             }
         }
         return null;
+    }
+
+    @VisibleForTesting
+    public boolean isShutdownRequested()
+    {
+        return isShuttingDown.get();
+    }
+
+    @VisibleForTesting
+    public boolean isShutdownCompleted()
+    {
+        return isShutDownCompleted.get();
     }
 
     private void interruptRunawaySplits()

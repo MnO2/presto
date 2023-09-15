@@ -77,6 +77,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -111,6 +112,7 @@ import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
+import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -606,6 +608,107 @@ public class TestSqlTaskExecution
             }
 
             outputBufferConsumer.abort(); // complete the task by calling abort on it
+            TaskState taskState = taskStateMachine.getStateChange(TaskState.RUNNING).get(10, SECONDS);
+            assertEquals(taskState, TaskState.FINISHED);
+        }
+        finally {
+            taskExecutor.stop();
+            taskNotificationExecutor.shutdownNow();
+            driverYieldExecutor.shutdown();
+        }
+    }
+
+    @Test(invocationCount = 1)
+    public void testGracefulShutdown()
+            throws Exception
+    {
+        PipelineExecutionStrategy executionStrategy = UNGROUPED_EXECUTION;
+        ScheduledExecutorService shutdownHandler = newSingleThreadScheduledExecutor(threadsNamed("shutdown-handler-%s"));
+
+        ScheduledExecutorService taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));
+        ScheduledExecutorService driverYieldExecutor = newScheduledThreadPool(2, threadsNamed("driver-yield-%s"));
+        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        taskExecutor.start();
+
+        try {
+            TaskStateMachine taskStateMachine = new TaskStateMachine(TASK_ID, taskNotificationExecutor);
+            PartitionedOutputBuffer outputBuffer = newTestingOutputBuffer(taskNotificationExecutor);
+            OutputBufferConsumer outputBufferConsumer = new OutputBufferConsumer(outputBuffer, OUTPUT_BUFFER_ID);
+
+            TestingScanOperatorFactory testingScanOperatorFactory = new TestingScanOperatorFactory(0, TABLE_SCAN_NODE_ID, ImmutableList.of(VARCHAR));
+            TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
+                    1,
+                    TABLE_SCAN_NODE_ID,
+                    outputBuffer,
+                    Function.identity(),
+                    new PagesSerdeFactory(new BlockEncodingManager(), false));
+            LocalExecutionPlan localExecutionPlan = new LocalExecutionPlan(
+                    ImmutableList.of(new DriverFactory(
+                            0,
+                            true,
+                            true,
+                            ImmutableList.of(testingScanOperatorFactory, taskOutputOperatorFactory),
+                            OptionalInt.empty(),
+                            executionStrategy,
+                            Optional.empty())),
+                    ImmutableList.of(TABLE_SCAN_NODE_ID),
+                    StageExecutionDescriptor.ungroupedExecution());
+            TaskContext taskContext = newTestingTaskContext(taskNotificationExecutor, driverYieldExecutor, taskStateMachine);
+            SqlTaskExecution sqlTaskExecution = SqlTaskExecution.createSqlTaskExecution(
+                    taskStateMachine,
+                    taskContext,
+                    outputBuffer,
+                    ImmutableList.of(),
+                    localExecutionPlan,
+                    taskExecutor,
+                    taskNotificationExecutor,
+                    createTestSplitMonitor());
+
+            //
+            // test body
+            assertEquals(taskStateMachine.getState(), TaskState.RUNNING);
+
+            // add source for pipeline
+            sqlTaskExecution.addSources(ImmutableList.of(new TaskSource(
+                    TABLE_SCAN_NODE_ID,
+                    ImmutableSet.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123)),
+                    false)));
+            // assert that partial task result is produced
+            outputBufferConsumer.consume(123, ASSERT_WAIT_TIMEOUT);
+
+            // pause operator execution to make sure that
+            // * operatorFactory will be closed even though operator can't execute
+            // * completedDriverGroups will NOT include the newly scheduled driver group while pause is in place
+            testingScanOperatorFactory.getPauser().pause();
+            // add source for pipeline, mark as no more splits
+            sqlTaskExecution.addSources(ImmutableList.of(new TaskSource(
+                    TABLE_SCAN_NODE_ID,
+                    ImmutableSet.of(
+                            newScheduledSplit(1, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 200000, 300),
+                            newScheduledSplit(2, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 300000, 200)),
+                    true)));
+            // assert that pipeline will have no more drivers
+            waitUntilEquals(testingScanOperatorFactory::isOverallNoMoreOperators, true, ASSERT_WAIT_TIMEOUT);
+            // assert that no DriverGroup is fully completed
+            assertEquals(taskContext.getCompletedDriverGroups(), ImmutableSet.of());
+
+            shutdownHandler.schedule(() -> {
+                taskExecutor.gracefulShutdown();
+            }, 1, MILLISECONDS);
+
+            waitUntilEquals(taskExecutor::isShutdownRequested,true, ASSERT_WAIT_TIMEOUT);
+
+            // resume operator execution
+            testingScanOperatorFactory.getPauser().resume();
+
+            // assert that task result is produced
+            outputBufferConsumer.consume(300 + 200, ASSERT_WAIT_TIMEOUT);
+            outputBufferConsumer.assertBufferComplete(ASSERT_WAIT_TIMEOUT);
+
+            outputBufferConsumer.abort(); // complete the task by calling abort on it
+
+            waitUntilEquals(taskExecutor::isShutdownCompleted,true, ASSERT_WAIT_TIMEOUT);
+
             TaskState taskState = taskStateMachine.getStateChange(TaskState.RUNNING).get(10, SECONDS);
             assertEquals(taskState, TaskState.FINISHED);
         }

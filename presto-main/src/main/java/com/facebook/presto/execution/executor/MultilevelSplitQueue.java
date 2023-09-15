@@ -283,6 +283,7 @@ public class MultilevelSplitQueue
     {
         lock.lock();
         if (containsTaskSplit(taskId, blockedSplit) || containsTaskSplit(taskId, runningSplits)) {
+            lock.unlock();
             return false;
         }
         try {

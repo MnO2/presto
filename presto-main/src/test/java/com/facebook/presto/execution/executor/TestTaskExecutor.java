@@ -355,6 +355,30 @@ public class TestTaskExecutor
         }
     }
 
+    @Test(invocationCount = 1)
+    public void testGracefulShutdown()
+    {
+        TestingTicker ticker = new TestingTicker();
+        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, QUERY_FAIR, ticker);
+        taskExecutor.start();
+
+        try {
+            TaskId taskId = new TaskId("test", 0, 0, 0, 0);
+            TaskHandle taskHandle = taskExecutor.addTask(taskId, () -> 0, 10, new Duration(1, MILLISECONDS), OptionalInt.empty());
+
+            TestingGracefulShutdownJob driver1 = new TestingGracefulShutdownJob(ticker, 5, 0);
+            TestingGracefulShutdownJob driver2 = new TestingGracefulShutdownJob(ticker, 5, 0);
+
+            taskExecutor.enqueueIntermediateSplits(taskHandle, ImmutableList.of(driver1));
+            taskExecutor.enqueueLeafSplits(taskHandle, ImmutableList.of(driver2), ImmutableList.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123)));
+
+            taskExecutor.gracefulShutdown();
+        }
+        finally {
+            taskExecutor.stop();
+        }
+    }
+
     @Test
     public void testLevelContributionCap()
     {
@@ -595,6 +619,71 @@ public class TestTaskExecutor
                 endQuantaPhaser.arriveAndDeregister();
                 beginQuantaPhaser.arriveAndDeregister();
                 globalPhaser.arriveAndDeregister();
+                completed.set(null);
+            }
+
+            return Futures.immediateFuture(null);
+        }
+
+        @Override
+        public String getInfo()
+        {
+            return "testing-split";
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            return completed.isDone();
+        }
+
+        public boolean isStarted()
+        {
+            return started.get();
+        }
+
+        @Override
+        public Optional<ScheduledSplit> getScheduledSplit()
+        {
+            return Optional.empty();
+        }
+
+        @Override
+        public void close()
+        {
+        }
+
+        public Future<?> getCompletedFuture()
+        {
+            return completed;
+        }
+    }
+
+    private static class TestingGracefulShutdownJob
+            implements SplitRunner
+    {
+        private final TestingTicker ticker;
+        private final int requiredPhases;
+        private final int quantaTimeMillis;
+        private final AtomicInteger completedPhases = new AtomicInteger();
+
+        private final AtomicBoolean started = new AtomicBoolean();
+        private final SettableFuture<?> completed = SettableFuture.create();
+
+        public TestingGracefulShutdownJob(TestingTicker ticker, int requiredPhases, int quantaTimeMillis)
+        {
+            this.ticker = ticker;
+            this.requiredPhases = requiredPhases;
+            this.quantaTimeMillis = quantaTimeMillis;
+        }
+
+        @Override
+        public ListenableFuture<?> processFor(Duration duration)
+        {
+            started.set(true);
+            ticker.increment(quantaTimeMillis, MILLISECONDS);
+
+            if (completedPhases.incrementAndGet() >= requiredPhases) {
                 completed.set(null);
             }
 
