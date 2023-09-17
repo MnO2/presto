@@ -552,6 +552,11 @@ public class MockRemoteTaskFactory
             taskStateMachine.failed(new HostShuttingDownException("Simulate retriable error", 30000000));
         }
 
+        public void graceful_failed()
+        {
+            taskStateMachine.graceful_failed(new HostShuttingDownException("Simulate retriable error", 30000000));
+        }
+
         @Override
         public void abort()
         {

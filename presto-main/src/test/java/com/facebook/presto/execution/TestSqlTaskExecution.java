@@ -77,7 +77,6 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -618,7 +617,7 @@ public class TestSqlTaskExecution
         }
     }
 
-    @Test(invocationCount = 1)
+    @Test(invocationCount = 100)
     public void testGracefulShutdown()
             throws Exception
     {
@@ -696,7 +695,7 @@ public class TestSqlTaskExecution
                 taskExecutor.gracefulShutdown();
             }, 1, MILLISECONDS);
 
-            waitUntilEquals(taskExecutor::isShutdownRequested,true, ASSERT_WAIT_TIMEOUT);
+            waitUntilEquals(taskExecutor::isShutdownRequested, true, ASSERT_WAIT_TIMEOUT);
 
             // resume operator execution
             testingScanOperatorFactory.getPauser().resume();
@@ -707,10 +706,10 @@ public class TestSqlTaskExecution
 
             outputBufferConsumer.abort(); // complete the task by calling abort on it
 
-            waitUntilEquals(taskExecutor::isShutdownCompleted,true, ASSERT_WAIT_TIMEOUT);
+            waitUntilEquals(taskExecutor::isShutdownCompleted, true, ASSERT_WAIT_TIMEOUT);
 
             TaskState taskState = taskStateMachine.getStateChange(TaskState.RUNNING).get(10, SECONDS);
-            assertEquals(taskState, TaskState.FINISHED);
+            assertEquals(taskState, TaskState.GRACEFUL_FAILED);
         }
         finally {
             taskExecutor.stop();

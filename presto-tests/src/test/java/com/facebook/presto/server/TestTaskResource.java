@@ -73,7 +73,6 @@ import static com.facebook.presto.execution.buffer.OutputBuffers.BufferType.PART
 import static com.facebook.presto.execution.buffer.OutputBuffers.createInitialEmptyOutputBuffers;
 import static com.facebook.presto.server.RequestHelpers.setContentTypeHeaders;
 import static com.facebook.presto.tests.tpch.TpchQueryRunner.createQueryRunner;
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 

@@ -108,6 +108,12 @@ public class TaskStateMachine
         transitionToDoneState(TaskState.FAILED);
     }
 
+    public void graceful_failed(Throwable cause)
+    {
+        failureCauses.add(cause);
+        transitionToDoneState(TaskState.GRACEFUL_FAILED);
+    }
+
     private void transitionToDoneState(TaskState doneState)
     {
         requireNonNull(doneState, "doneState is null");

@@ -513,7 +513,7 @@ public class TestSqlStageExecution
 
         assertSame(stage.getState(), StageExecutionState.DRAINING);
 
-        firstTask.failed();
+        firstTask.graceful_failed();
 
         assertFalse(stage.getStageExecutionInfo().getTasks().isEmpty());
         assertFalse(stage.noMoreRetry());
@@ -669,7 +669,7 @@ public class TestSqlStageExecution
 
             assertSame(stage.getState(), StageExecutionState.DRAINING);
 
-            firstTask.failed();
+            firstTask.graceful_failed();
 
             stage.updateTaskStatus(firstTask.getTaskId(), firstTask.getTaskStatus());
             stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());
@@ -678,7 +678,7 @@ public class TestSqlStageExecution
             MockRemoteTaskFactory.MockRemoteTask firstTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(0);
             MockRemoteTaskFactory.MockRemoteTask secondTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(1);
 
-            firstTask.failed();
+            firstTask.graceful_failed();
 
             stage.updateTaskStatus(firstTask.getTaskId(), firstTask.getTaskStatus());
             stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());

@@ -255,7 +255,7 @@ public class TaskHandle
 
     public boolean isOutputBufferEmpty()
     {
-        return outputBuffer.map(OutputBuffer::isAllPagesConsumed).orElse(true);
+        return !outputBuffer.isPresent() || outputBuffer.get().isFinished();
     }
 
     public Optional<OutputBuffer> getOutputBuffer()

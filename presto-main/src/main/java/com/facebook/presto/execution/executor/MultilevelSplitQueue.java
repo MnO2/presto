@@ -282,11 +282,12 @@ public class MultilevelSplitQueue
     public boolean isEligibleForGracefulShutdown(TaskId taskId, Set<PrioritizedSplitRunner> blockedSplit, Set<PrioritizedSplitRunner> runningSplits)
     {
         lock.lock();
-        if (containsTaskSplit(taskId, blockedSplit) || containsTaskSplit(taskId, runningSplits)) {
-            lock.unlock();
-            return false;
-        }
+
         try {
+            if (containsTaskSplit(taskId, blockedSplit) || containsTaskSplit(taskId, runningSplits)) {
+                return false;
+            }
+
             for (PriorityQueue<PrioritizedSplitRunner> level : levelWaitingSplits) {
                 for (PrioritizedSplitRunner split : level) {
                     if (!split.getTaskHandle().getTaskId().equals(taskId)) {
