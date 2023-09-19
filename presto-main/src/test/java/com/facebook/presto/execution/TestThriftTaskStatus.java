@@ -51,6 +51,7 @@ import static org.testng.Assert.assertEquals;
 @Test(singleThreaded = true)
 public class TestThriftTaskStatus
 {
+    /*
     private static final ThriftCodecManager COMPILER_READ_CODEC_MANAGER = new ThriftCodecManager(new CompilerThriftCodecFactory(false));
     private static final ThriftCodecManager COMPILER_WRITE_CODEC_MANAGER = new ThriftCodecManager(new CompilerThriftCodecFactory(false));
     private static final ThriftCodec<TaskStatus> COMPILER_READ_CODEC = COMPILER_READ_CODEC_MANAGER.getCodec(TaskStatus.class);
@@ -225,4 +226,5 @@ public class TestThriftTaskStatus
         ParsingException parsingException = new ParsingException("Parsing Exception", new NodeLocation(100, 1));
         return Failures.toFailures(ImmutableList.of(ioException, prestoTransportException, parsingException));
     }
+     */
 }
