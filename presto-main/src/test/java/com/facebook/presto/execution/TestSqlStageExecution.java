@@ -234,18 +234,9 @@ public class TestSqlStageExecution
                 {remoteSourceNode, 1.0},
         };
     }
-    @Test(timeOut = 3 * 60 * 1000, dataProvider = "noFailedTaskPlanNodeDataProvider")
-    public void testNoMoreRetryOnNoFailedTask(PlanNode planNode, double maxFailedTaskPercentage)
-            throws Exception
-    {
-        // run test a few times to catch any race conditions
-        // this is not done with TestNG invocation count so there can be a global time limit on the test
-        for (int iteration = 0; iteration < 10; iteration++) {
-            testNoMoreRetryOnNoFailedTaskInternal(planNode, maxFailedTaskPercentage);
-        }
-    }
 
-    private void testNoMoreRetryOnNoFailedTaskInternal(PlanNode planNode, double maxFailedTaskPercentage)
+    @Test(timeOut = 3 * 60 * 1000, dataProvider = "noFailedTaskPlanNodeDataProvider", invocationCount = 10)
+    public void testNoMoreRetryOnNoFailedTask(PlanNode planNode, double maxFailedTaskPercentage)
             throws Exception
     {
         NodeTaskMap nodeTaskMap = new NodeTaskMap(new FinalizerService());
@@ -325,8 +316,6 @@ public class TestSqlStageExecution
             throw new Exception("This code should not be reachable");
         }, ImmutableSet.of(HOST_SHUTTING_DOWN.toErrorCode()));
 
-        stage.schedulingComplete();
-
         MockRemoteTaskFactory.MockRemoteTask firstTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(0);
         MockRemoteTaskFactory.MockRemoteTask secondTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(1);
 
@@ -334,7 +323,7 @@ public class TestSqlStageExecution
         stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());
 
         if (planNode instanceof TableScanNode) {
-            assertSame(stage.getState(), StageExecutionState.DRAINING);
+            assertSame(stage.getState(), StageExecutionState.SCHEDULING_SPLITS);
             assertFalse(stage.getStageExecutionInfo().getTasks().isEmpty());
             assertFalse(stage.noMoreRetry());
 
@@ -352,7 +341,8 @@ public class TestSqlStageExecution
             stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());
         }
 
-        assertSame(stage.getState(), StageExecutionState.FINISHED);
+        stage.schedulingComplete();
+        assertSame(stage.getState(), StageExecutionState.SCHEDULED);
 
         for (PlanNodeId tableScanPlanNodeId : plan.getTableScanSchedulingOrder()) {
             for (RemoteTask task : allTasks) {
@@ -361,19 +351,9 @@ public class TestSqlStageExecution
         }
     }
 
-    @Test(timeOut = 3 * 60 * 1000)
-    public void testNoMoreRetryOnOneFailedTaskOutOfTwoForLeafStage()
-            throws Exception
-    {
-        // run test a few times to catch any race conditions
-        // this is not done with TestNG invocation count so there can be a global time limit on the test
-        for (int iteration = 0; iteration < 10; iteration++) {
-            testNoMoreRetryOnOneFailedTaskOutOfTwoForLeafStageInternal();
-        }
-    }
-
+    @Test(timeOut = 3 * 60 * 1000, invocationCount = 10)
     @SuppressWarnings("checkstyle:EmptyBlock")
-    private void testNoMoreRetryOnOneFailedTaskOutOfTwoForLeafStageInternal()
+    public void testNoMoreRetryOnOneFailedTaskOutOfTwoForLeafStage()
             throws Exception
     {
         int retryBatchSize = 100;
@@ -503,15 +483,13 @@ public class TestSqlStageExecution
             recoveryIsRun.countDown();
         }, ImmutableSet.of(HOST_SHUTTING_DOWN.toErrorCode()));
 
-        stage.schedulingComplete();
-
         MockRemoteTaskFactory.MockRemoteTask firstTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(0);
         MockRemoteTaskFactory.MockRemoteTask secondTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(1);
 
         stage.updateTaskStatus(firstTask.getTaskId(), firstTask.getTaskStatus());
         stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());
 
-        assertSame(stage.getState(), StageExecutionState.DRAINING);
+        assertSame(stage.getState(), StageExecutionState.SCHEDULING_SPLITS);
 
         firstTask.graceful_failed();
 
@@ -530,7 +508,8 @@ public class TestSqlStageExecution
         assertTrue(stage.noMoreRetry());
 
         stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());
-        assertSame(stage.getState(), StageExecutionState.FINISHED);
+        stage.schedulingComplete();
+        assertSame(stage.getState(), StageExecutionState.SCHEDULED);
 
         for (PlanNodeId tableScanPlanNodeId : plan.getTableScanSchedulingOrder()) {
             for (RemoteTask task : allTasks) {
@@ -567,18 +546,8 @@ public class TestSqlStageExecution
         };
     }
 
-    @Test(timeOut = 3 * 60 * 1000, dataProvider = "failedTaskExceedingThresholdPlanNodeDataProvider")
-    public void testNoMoreRetryOnFailedTasksExceedingFailurePercentage(PlanNode planNode, double maxFailedTaskPercentage)
-            throws Exception
-    {
-        // run test a few times to catch any race conditions
-        // this is not done with TestNG invocation count so there can be a global time limit on the test
-        for (int iteration = 0; iteration < 1; iteration++) {
-            testNoMoreRetryOnFailedTasksExceedingFailurePercentageInternal(planNode, maxFailedTaskPercentage);
-        }
-    }
-
-    private void testNoMoreRetryOnFailedTasksExceedingFailurePercentageInternal(PlanNode planNode, double maxFailedTaskPercentage)
+    @Test(timeOut = 3 * 60 * 1000, dataProvider = "failedTaskExceedingThresholdPlanNodeDataProvider", invocationCount = 10)
+    public void testNoMoreRetryOnFailedTasksExceedingFailurePercentageInternal(PlanNode planNode, double maxFailedTaskPercentage)
             throws Exception
     {
         NodeTaskMap nodeTaskMap = new NodeTaskMap(new FinalizerService());
@@ -659,15 +628,13 @@ public class TestSqlStageExecution
         }, ImmutableSet.of(HOST_SHUTTING_DOWN.toErrorCode()));
 
         if (planNode instanceof TableScanNode) {
-            stage.schedulingComplete();
-
             MockRemoteTaskFactory.MockRemoteTask firstTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(0);
             MockRemoteTaskFactory.MockRemoteTask secondTask = (MockRemoteTaskFactory.MockRemoteTask) allTasks.get(1);
 
             stage.updateTaskStatus(firstTask.getTaskId(), firstTask.getTaskStatus());
             stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());
 
-            assertSame(stage.getState(), StageExecutionState.DRAINING);
+            assertSame(stage.getState(), StageExecutionState.SCHEDULING_SPLITS);
 
             firstTask.graceful_failed();
 
@@ -682,14 +649,9 @@ public class TestSqlStageExecution
 
             stage.updateTaskStatus(firstTask.getTaskId(), firstTask.getTaskStatus());
             stage.updateTaskStatus(secondTask.getTaskId(), secondTask.getTaskStatus());
-
-            // The MockRemoteTask would immediately mark the task as finished when it receives NO_MORE_SPLIT, therefore updateTaskStatus has to be put before schedulingComplete
-            // This should only happen to the MockRemoteTask.
-            stage.schedulingComplete();
         }
 
         assertFalse(stage.getStageExecutionInfo().getTasks().isEmpty());
-        assertTrue(stage.noMoreRetry());
         assertSame(stage.getState(), StageExecutionState.FAILED);
     }
 }

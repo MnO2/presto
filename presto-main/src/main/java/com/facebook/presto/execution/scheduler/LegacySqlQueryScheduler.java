@@ -82,7 +82,6 @@ import static com.facebook.presto.SystemSessionProperties.isRuntimeOptimizerEnab
 import static com.facebook.presto.execution.BasicStageExecutionStats.aggregateBasicStageStats;
 import static com.facebook.presto.execution.StageExecutionState.ABORTED;
 import static com.facebook.presto.execution.StageExecutionState.CANCELED;
-import static com.facebook.presto.execution.StageExecutionState.DRAINING;
 import static com.facebook.presto.execution.StageExecutionState.FAILED;
 import static com.facebook.presto.execution.StageExecutionState.FINISHED;
 import static com.facebook.presto.execution.StageExecutionState.PLANNED;
@@ -508,7 +507,7 @@ public class LegacySqlQueryScheduler
 
             for (StageExecutionAndScheduler stageExecutionInfo : scheduledStageExecutions) {
                 StageExecutionState state = stageExecutionInfo.getStageExecution().getState();
-                if (state != SCHEDULED && state != RUNNING && state != DRAINING && !state.isDone()) {
+                if (state != SCHEDULED && state != RUNNING) {
                     throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Scheduling is complete, but stage execution %s is in state %s", stageExecutionInfo.getStageExecution().getStageExecutionId(), state));
                 }
             }

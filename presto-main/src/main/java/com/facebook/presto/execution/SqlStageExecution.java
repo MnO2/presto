@@ -144,8 +144,7 @@ public final class SqlStageExecution
     private final AtomicReference<OutputBuffers> outputBuffers = new AtomicReference<>();
 
     private final ListenerManager<Set<Lifespan>> completedLifespansChangeListeners = new ListenerManager<>();
-
-    private boolean schedulingCompleted;
+    private final ListenerManager<Integer> splitsRetryFinishedListeners = new ListenerManager<>();
 
     private final boolean isRetryOfFailedSplitsEnabled;
 
@@ -272,6 +271,11 @@ public final class SqlStageExecution
         completedLifespansChangeListeners.addListener(newlyCompletedDriverGroupConsumer);
     }
 
+    public void addSplitsRetryFinishedListener(Consumer<Integer> splitsFinishedConsumer)
+    {
+        splitsRetryFinishedListeners.addListener(splitsFinishedConsumer);
+    }
+
     public synchronized void registerStageTaskRecoveryCallback(StageTaskRecoveryCallback stageTaskRecoveryCallback)
     {
         checkState(!this.stageTaskRecoveryCallback.isPresent(), "stageTaskRecoveryCallback should be registered only once");
@@ -311,43 +315,27 @@ public final class SqlStageExecution
         stateMachine.transitionToSchedulingSplits();
     }
 
-    public synchronized void transitionToDraining()
-    {
-        stateMachine.transitionToDraining();
-    }
-
     public synchronized void schedulingComplete()
     {
         if (!stateMachine.transitionToScheduled()) {
             return;
         }
 
-        if (planFragment.isLeaf()) {
-            schedulingCompleted = true;
-            transitionToDraining();
+        if (finishedTasks.size() == allTasks.size()) {
+            stateMachine.transitionToFinished();
         }
-        else {
-            if (finishedTasks.size() == allTasks.size()) {
-                stateMachine.transitionToFinished();
-            }
 
-            for (PlanNodeId tableScanPlanNodeId : planFragment.getTableScanSchedulingOrder()) {
-                schedulingComplete(tableScanPlanNodeId);
-            }
+        for (PlanNodeId tableScanPlanNodeId : planFragment.getTableScanSchedulingOrder()) {
+            schedulingComplete(tableScanPlanNodeId);
         }
     }
 
     public synchronized void schedulingComplete(PlanNodeId partitionedSource)
     {
-        if (planFragment.isLeaf()) {
-            transitionToDraining();
+        for (RemoteTask task : getAllTasks()) {
+            task.noMoreSplits(partitionedSource);
         }
-        else {
-            for (RemoteTask task : getAllTasks()) {
-                task.noMoreSplits(partitionedSource);
-            }
-            completeSources.add(partitionedSource);
-        }
+        completeSources.add(partitionedSource);
     }
 
     public synchronized void cancel()
@@ -625,6 +613,10 @@ public final class SqlStageExecution
                     .map(ExecutionFailureInfo::toException)
                     .orElse(new PrestoException(GENERIC_INTERNAL_ERROR, "A task failed for an unknown reason"));
 
+            if (!isFailedTasksBelowThreshold()) {
+                stateMachine.transitionToFailed(failure);
+            }
+
             try {
                 stageTaskRecoveryCallback.get().recover(taskId, rewrittenFailures);
                 totalRetries.incrementAndGet();
@@ -654,7 +646,7 @@ public final class SqlStageExecution
                     .findFirst()
                     .map(ExecutionFailureInfo::toException)
                     .orElse(new PrestoException(GENERIC_INTERNAL_ERROR, "A task failed for an unknown reason"));
-            if (isRecoverableOldPath(taskStatus.getFailures())) {
+            if (isRecoverable(taskStatus.getFailures())) {
                 try {
                     stageTaskRecoveryCallback.get().recover(taskId, rewrittenFailures);
                     finishedTasks.add(taskId);
@@ -682,33 +674,22 @@ public final class SqlStageExecution
         // The finishedTasks.add(taskStatus.getTaskId()) must happen before the getState() (see schedulingComplete)
         stageExecutionState = getState();
 
-        if (planFragment.isLeaf()) {
-            if (stageExecutionState == StageExecutionState.SCHEDULED || stageExecutionState == StageExecutionState.RUNNING) {
-                if (taskState == TaskState.RUNNING) {
-                    stateMachine.transitionToRunning();
-                }
-                if (schedulingCompleted) {
-                    stateMachine.transitionToDraining();
-                }
+        if (stageExecutionState == StageExecutionState.SCHEDULED || stageExecutionState == StageExecutionState.RUNNING) {
+            if (taskState == TaskState.RUNNING) {
+                stateMachine.transitionToRunning();
             }
 
-            if (stageExecutionState == StageExecutionState.DRAINING) {
+            if (isRetryOfFailedSplitsEnabled) {
+                if (!isFailedTasksBelowThreshold()) {
+                    stateMachine.transitionToFailed(new PrestoException(GENERIC_INTERNAL_ERROR, "exceeding failTask percentage"));
+                }
+
                 if (noMoreRetry()) {
                     stateMachine.transitionToFinished();
-                    for (PlanNodeId tableScanPlanNodeId : planFragment.getTableScanSchedulingOrder()) {
-                        for (RemoteTask task : getAllTasks()) {
-                            task.noMoreSplits(tableScanPlanNodeId);
-                        }
-                        completeSources.add(tableScanPlanNodeId);
-                    }
+                    splitsRetryFinishedListeners.invoke(0, executor);
                 }
             }
-        }
-        else {
-            if (stageExecutionState == StageExecutionState.SCHEDULED || stageExecutionState == StageExecutionState.RUNNING) {
-                if (taskState == TaskState.RUNNING) {
-                    stateMachine.transitionToRunning();
-                }
+            else {
                 if (finishedTasks.size() == allTasks.size()) {
                     stateMachine.transitionToFinished();
                 }
@@ -719,18 +700,6 @@ public final class SqlStageExecution
     private boolean isRecoverable(List<ExecutionFailureInfo> failures)
     {
         for (ExecutionFailureInfo failure : failures) {
-            if (!getRecoverableErrorCodes().contains(failure.getErrorCode())) {
-                return false;
-            }
-        }
-        boolean isRecoverable = stageTaskRecoveryCallback.isPresent() && isFailedTasksBelowThreshold();
-        log.info("Failure recovery error check , isRecoverable = %s, failure error codes = %s", isRecoverable, failures.stream().map(failure -> failure.getErrorCode()).collect(toImmutableList()));
-        return isRecoverable;
-    }
-
-    private boolean isRecoverableOldPath(List<ExecutionFailureInfo> failures)
-    {
-        for (ExecutionFailureInfo failure : failures) {
             if (!DEFAULT_RECOVERABLE_ERROR_CODES.contains(failure.getErrorCode())) {
                 return false;
             }
@@ -738,14 +707,6 @@ public final class SqlStageExecution
         boolean isRecoverable = stageTaskRecoveryCallback.isPresent() && isFailedTasksBelowThreshold();
         log.info("Failure recovery error check , isRecoverable = %s, failure error codes = %s", isRecoverable, failures.stream().map(failure -> failure.getErrorCode()).collect(toImmutableList()));
         return isRecoverable;
-    }
-
-    public Set<ErrorCode> getRecoverableErrorCodes()
-    {
-        if (recoveryErrorCodes.isPresent()) {
-            return recoveryErrorCodes.get();
-        }
-        return DEFAULT_RECOVERABLE_ERROR_CODES;
     }
 
     public synchronized boolean noMoreRetry()
@@ -763,16 +724,12 @@ public final class SqlStageExecution
             return noMoreRetryWithFailedTasks();
         }
         else {
-            return true;
+            return finishedTasks.size() == allTasks.size();
         }
     }
 
     private boolean noMoreRetryWithFailedTasks()
     {
-        if (!isFailedTasksBelowThreshold()) {
-            return true;
-        }
-
         checkState(finishedTasks.size() != allTasks.size());
 
         List<RemoteTask> idleRunningHttpRemoteTasks = getAllTasks().stream()
