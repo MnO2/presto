@@ -233,7 +233,7 @@ public class TaskExecutor
         isGracefulShutdownFinished.set(true);
     }
 
-    private ImmutableList<TaskHandle> getActiveTasks()
+    private synchronized ImmutableList<TaskHandle> getActiveTasks()
     {
         return tasks.stream().filter(taskHandle -> !taskHandle.isDestroyed() && !taskHandle.isShutdownInProgress()).collect(toImmutableList());
     }
@@ -261,17 +261,22 @@ public class TaskExecutor
                                     builderWithOutputBufferInfo("init", shuttingdownNode, taskHandle.getOutputBuffer())
                                             .build());
 
-                            while (!isEligibleForGracefulShutdown(taskId)) {
-                                TaskShutdownStats waitingForSplitStats = builderWithOutputBufferInfo(SPLIT_WAIT, shuttingdownNode, taskHandle.getOutputBuffer())
-                                        .setPendingRunningSplitState(SPLIT_WAIT, System.nanoTime() - startTime)
-                                        .build();
-                                taskHandle.updateTaskShutdownState(waitingForSplitStats);
-                                long currentTime = System.currentTimeMillis();
-                                if (currentTime - lastLogTime >= logFrequencyMillis) {
-                                    log.info("Num running splits for task %s = %s, Num blocked splits = %s", taskId, runningSplits.size(), blockedSplits.size());
-                                    logRunningWaitingAndBlockedSplits(String.format("SplitView:state:%s for task %s", SPLIT_WAIT, taskId), taskId);
+                            while (taskHandle.getRunningLeafSplits() > 0 || taskHandle.getRunningIntermediateSplits() > 0) {
+                                try {
+                                    TaskShutdownStats waitingForSplitStats = builderWithOutputBufferInfo(SPLIT_WAIT, shuttingdownNode, taskHandle.getOutputBuffer())
+                                            .setPendingRunningSplitState(SPLIT_WAIT, System.nanoTime() - startTime)
+                                            .build();
+                                    taskHandle.updateTaskShutdownState(waitingForSplitStats);
+                                    long currentTime = System.currentTimeMillis();
+                                    if (currentTime - lastLogTime >= logFrequencyMillis) {
+                                        log.info("Num running splits for task %s = %s, Num blocked splits = %s", taskId, runningSplits.size(), blockedSplits.size());
+                                        logRunningWaitingAndBlockedSplits(String.format("SplitView:state:%s for task %s", SPLIT_WAIT, taskId), taskId);
+                                    }
+                                    Thread.sleep(waitTimeMillis);
                                 }
-                                Thread.sleep(waitTimeMillis);
+                                catch (Exception ex) {
+                                    log.error(ex, "GracefulShutdown got interrupted while waiting for split completion for task %s", taskId);
+                                }
                             }
 
                             TaskShutdownStats waitingForSplitStats = builderWithOutputBufferInfo(SPLIT_WAIT_OVER, shuttingdownNode, taskHandle.getOutputBuffer())
@@ -300,7 +305,7 @@ public class TaskExecutor
                                     Thread.sleep(waitTimeMillis);
                                 }
                                 catch (InterruptedException e) {
-                                    log.error("GracefulShutdown got interrupted for task %s", taskId, e);
+                                    log.error(e, "GracefulShutdown got interrupted for task %s", taskId);
                                 }
                             }
                             outputBufferEmptyWaitTime.add(Duration.nanosSince(startTime));
@@ -591,8 +596,8 @@ public class TaskExecutor
                 maxDriversPerTask,
                 taskKillListener,
                 outputBuffer);
-
         tasks.add(taskHandle);
+
         return taskHandle;
     }
 
@@ -786,10 +791,8 @@ public class TaskExecutor
 
     private synchronized void startSplit(PrioritizedSplitRunner split)
     {
-        if (!isShuttingDown()) {
-            allSplits.add(split);
-            waitingSplits.offer(split);
-        }
+        allSplits.add(split);
+        waitingSplits.offer(split);
     }
 
     private synchronized PrioritizedSplitRunner pollNextSplitWorker()
@@ -854,9 +857,6 @@ public class TaskExecutor
                     catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return;
-                    }
-                    if (isGracefulShutdownStarted.get() && !split.isSplitAlreadyStarted()) {
-                        continue;
                     }
 
                     String threadId = split.getTaskHandle().getTaskId() + "-" + split.getSplitId();
@@ -1352,7 +1352,7 @@ public class TaskExecutor
         return this.lowMemory;
     }
 
-    public boolean isShuttingDown()
+    public boolean isShuttingDownStarted()
     {
         return isGracefulShutdownStarted.get();
     }
