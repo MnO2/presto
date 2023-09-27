@@ -28,6 +28,7 @@ import com.facebook.presto.memory.QueryContext;
 import com.facebook.presto.memory.context.SimpleLocalMemoryContext;
 import com.facebook.presto.metadata.InternalNode;
 import com.facebook.presto.metadata.Split;
+import com.facebook.presto.operator.HostShuttingDownException;
 import com.facebook.presto.operator.StageExecutionDescriptor;
 import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.operator.TaskMemoryReservationSummary;
@@ -179,6 +180,8 @@ public class MockRemoteTaskFactory
         private final String nodeId;
 
         private final PlanFragment fragment;
+        private boolean isRetriedOnFailure;
+        private boolean isTaskIdling;
 
         @GuardedBy("this")
         private final Set<PlanNodeId> noMoreSplits = new HashSet<>();
@@ -297,7 +300,8 @@ public class MockRemoteTaskFactory
                             System.currentTimeMillis() + 100 - stats.getCreateTime().getMillis(),
                             0L,
                             0L,
-                            0L),
+                            0L,
+                            isTaskIdling),
                     DateTime.now(),
                     outputBuffer.getInfo(),
                     ImmutableSet.of(),
@@ -342,7 +346,8 @@ public class MockRemoteTaskFactory
                     System.currentTimeMillis() + 100 - stats.getCreateTime().getMillis(),
                     queuedSplitsInfo.getWeightSum(),
                     combinedSplitsInfo.getWeightSum() - queuedSplitsInfo.getWeightSum(),
-                    0L);
+                    0L,
+                    isTaskIdling);
         }
 
         private void updateTaskStats()
@@ -419,6 +424,21 @@ public class MockRemoteTaskFactory
             updateSplitQueueSpace();
         }
 
+        public synchronized void setIsRetried()
+        {
+            isRetriedOnFailure = true;
+        }
+
+        public synchronized boolean isRetried()
+        {
+            return isRetriedOnFailure;
+        }
+
+        public boolean isTaskIdling()
+        {
+            return getTaskStatus().getIsTaskIdling();
+        }
+
         @Override
         public void start()
         {
@@ -463,12 +483,6 @@ public class MockRemoteTaskFactory
         }
 
         @Override
-        public boolean isNoMoreSplits(PlanNodeId sourceId)
-        {
-            return noMoreSplits.contains(sourceId);
-        }
-
-        @Override
         public void setOutputBuffers(OutputBuffers outputBuffers)
         {
             outputBuffer.setOutputBuffers(outputBuffers);
@@ -509,6 +523,11 @@ public class MockRemoteTaskFactory
         public void cancel()
         {
             taskStateMachine.cancel();
+        }
+
+        public void graceful_failed()
+        {
+            taskStateMachine.graceful_failed(new HostShuttingDownException("Simulate retriable error", 30000000));
         }
 
         @Override

@@ -26,7 +26,6 @@ import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.metadata.InternalNode;
 import com.facebook.presto.metadata.RemoteTransactionHandle;
 import com.facebook.presto.metadata.Split;
-import com.facebook.presto.server.remotetask.HttpRemoteTask;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.split.RemoteSplit;
@@ -39,6 +38,8 @@ import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 
@@ -78,6 +79,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static com.google.common.collect.MoreCollectors.onlyElement;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static io.airlift.units.DataSize.Unit.BYTE;
 import static java.lang.String.format;
@@ -143,12 +145,12 @@ public final class SqlStageExecution
 
     private final ListenerManager<Set<Lifespan>> completedLifespansChangeListeners = new ListenerManager<>();
 
+    private boolean isRetryOfFailedSplitsEnabled;
+
+    private SettableFuture<?> whenNoMoreRetry = SettableFuture.create();
+
     @GuardedBy("this")
     private Optional<StageTaskRecoveryCallback> stageTaskRecoveryCallback = Optional.empty();
-    @GuardedBy("this")
-    private final AtomicInteger totalRetries = new AtomicInteger();
-    private ThreadLocal<Boolean> noMoreRetries = ThreadLocal.withInitial(() -> false);
-    private ThreadLocal<Long> firstNoMoreRetries = ThreadLocal.withInitial(() -> 0L);
 
     public static SqlStageExecution createSqlStageExecution(
             StageExecutionId stageExecutionId,
@@ -160,7 +162,8 @@ public final class SqlStageExecution
             ExecutorService executor,
             FailureDetector failureDetector,
             SplitSchedulerStats schedulerStats,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            boolean isRetryOfFailedSplitsEnabled)
     {
         requireNonNull(stageExecutionId, "stageId is null");
         requireNonNull(fragment, "fragment is null");
@@ -182,7 +185,8 @@ public final class SqlStageExecution
                 executor,
                 failureDetector,
                 getMaxFailedTaskPercentage(session),
-                tableWriteInfo);
+                tableWriteInfo,
+                isRetryOfFailedSplitsEnabled);
         sqlStageExecution.initialize();
         return sqlStageExecution;
     }
@@ -197,7 +201,8 @@ public final class SqlStageExecution
             Executor executor,
             FailureDetector failureDetector,
             double maxFailedTaskPercentage,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            boolean isRetryOfFailedSplitsEnabled)
     {
         this.session = requireNonNull(session, "session is null");
         this.stateMachine = stateMachine;
@@ -218,6 +223,7 @@ public final class SqlStageExecution
         }
         this.exchangeSources = fragmentToExchangeSource.build();
         this.totalLifespans = planFragment.getStageExecutionDescriptor().getTotalLifespans();
+        this.isRetryOfFailedSplitsEnabled = isRetryOfFailedSplitsEnabled;
     }
 
     // this is a separate method to ensure that the `this` reference is not leaked during construction
@@ -303,6 +309,30 @@ public final class SqlStageExecution
     public synchronized void transitionToSchedulingSplits()
     {
         stateMachine.transitionToSchedulingSplits();
+    }
+
+    public synchronized void transitionToSchedulingRetriedSplits()
+    {
+        stateMachine.transitionToSchedulingRetriedSplits();
+    }
+
+    public synchronized void schedulingCompleteIfRetryingSplits()
+    {
+        if (isRetryOfFailedSplitsEnabled && planFragment.isLeaf()) {
+            if (!stateMachine.transitionToScheduledIfRetryingSplits()) {
+                return;
+            }
+
+            if (noMoreRetry()) {
+                stateMachine.transitionToFinished();
+                for (PlanNodeId tableScanPlanNodeId : planFragment.getTableScanSchedulingOrder()) {
+                    schedulingComplete(tableScanPlanNodeId);
+                }
+            }
+        }
+        else {
+            schedulingComplete();
+        }
     }
 
     public synchronized void schedulingComplete()
@@ -592,7 +622,7 @@ public final class SqlStageExecution
         }
 
         TaskState taskState = taskStatus.getState();
-        if (taskState == TaskState.FAILED) {
+        if (taskState == TaskState.GRACEFUL_FAILED) {
             // no matter if it is possible to recover - the task is failed
             failedTasks.add(taskId);
             if (taskStatus.getRetryableSplitCount() > 0) {
@@ -605,6 +635,39 @@ public final class SqlStageExecution
                 splitRetryStats.addMetricValue(retryMetricName, RuntimeUnit.NONE, taskStatus.getRetryableSplitCount());
                 session.getRuntimeStats().update(splitRetryStats);
             }
+
+            RuntimeException failure = taskStatus.getFailures().stream()
+                    .findFirst()
+                    .map(this::rewriteTransportFailure)
+                    .map(ExecutionFailureInfo::toException)
+                    .orElse(new PrestoException(GENERIC_INTERNAL_ERROR, "A task failed for an unknown reason"));
+
+            if (isFailedTasksBelowThreshold()) {
+                try {
+                    stageTaskRecoveryCallback.get().recover(taskId);
+
+                    RemoteTask failedTask = getAllTasks().stream()
+                            .filter(task -> task.getTaskId().equals(taskId))
+                            .collect(onlyElement());
+                    failedTask.setIsRetried();
+
+                    finishedTasks.add(taskId);
+                }
+                catch (Throwable t) {
+                    // In an ideal world, this exception is not supposed to happen.
+                    // However, it could happen, for example, if connector throws exception.
+                    // We need to handle the exception in order to fail the query properly, otherwise the failed task will hang in RUNNING/SCHEDULING state.
+                    failure.addSuppressed(new PrestoException(GENERIC_RECOVERY_ERROR, format("Encountered error when trying to recover task %s", taskId), t));
+                    stateMachine.transitionToFailed(failure);
+                }
+            }
+            else {
+                stateMachine.transitionToFailed(failure);
+            }
+        }
+        else if (taskState == TaskState.FAILED) {
+            // no matter if it is possible to recover - the task is failed
+            failedTasks.add(taskId);
 
             RuntimeException failure = taskStatus.getFailures().stream()
                     .findFirst()
@@ -638,54 +701,76 @@ public final class SqlStageExecution
 
         // The finishedTasks.add(taskStatus.getTaskId()) must happen before the getState() (see schedulingComplete)
         stageExecutionState = getState();
+        if (isRetryOfFailedSplitsEnabled && planFragment.isLeaf() && stageExecutionState == StageExecutionState.SCHEDULING_RETRIED_SPLITS) {
+            if (!isFailedTasksBelowThreshold() || noMoreRetry()) {
+                whenNoMoreRetry.set(null);
+                return;
+            }
+        }
+
         if (stageExecutionState == StageExecutionState.SCHEDULED || stageExecutionState == StageExecutionState.RUNNING) {
             if (taskState == TaskState.RUNNING) {
                 stateMachine.transitionToRunning();
             }
+
             if (finishedTasks.size() == allTasks.size()) {
                 stateMachine.transitionToFinished();
             }
         }
     }
 
-    //hack, remove it once we transition to draining state of tasks
-    //there is a corner case where noMoreRetryWithFailedTasks returns true before failed splits are added to the task
+    public ListenableFuture<?> getBlocked()
+    {
+        return whenNoMoreRetry;
+    }
+
     public synchronized boolean noMoreRetry()
     {
+        checkState(planFragment.isLeaf());
+
         if (failedTasks.isEmpty()) {
-            List<HttpRemoteTask> idleRunningHttpRemoteTasks = getAllTasks().stream()
-                    .filter(task -> task instanceof HttpRemoteTask)
-                    .map(task -> (HttpRemoteTask) task)
-                    .filter(HttpRemoteTask::isAllSplitsRun)
+            checkState(finishedTasks.isEmpty());
+            List<RemoteTask> idleRunningHttpRemoteTasks = getAllTasks().stream()
+                    .filter(task -> task.getTaskStatus().getState() == TaskState.RUNNING)
+                    .filter(task -> task.isTaskIdling())
                     .collect(toList());
             return idleRunningHttpRemoteTasks.size() == allTasks.size();
         }
-        boolean noMoreRetryInternal = noMoreRetryWithFailedTasks();
-        if (!noMoreRetryInternal) {
-            return false;
-        }
-        //delay no more retry decision by a min
-        if (!noMoreRetries.get()) {
-            firstNoMoreRetries.set(System.currentTimeMillis());
-        }
-        noMoreRetries.set(true);
-        if (System.currentTimeMillis() - firstNoMoreRetries.get() >= DELAY_NO_MORE_RETRY) {
-            return true;
-        }
-        return false;
+
+        return noMoreRetryWithFailedTasks();
     }
 
     private boolean noMoreRetryWithFailedTasks()
     {
-        List<HttpRemoteTask> idleRunningHttpRemoteTasks = getAllTasks().stream()
-                .filter(task -> task instanceof HttpRemoteTask)
-                .map(task -> (HttpRemoteTask) task)
+        checkState(finishedTasks.size() != allTasks.size());
+
+        if (!isFailedTasksBelowThreshold()) {
+            return true;
+        }
+
+        List<RemoteTask> idleRunningHttpRemoteTasks = getAllTasks().stream()
                 .filter(task -> task.getTaskStatus().getState() == TaskState.RUNNING)
-                .filter(HttpRemoteTask::isAllSplitsRun)
+                .filter(task -> task.isTaskIdling())
                 .collect(toList());
-        return idleRunningHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
+
+        long retriedFailedTaskCount = getAllTasks().stream()
+                .filter(task -> task.getTaskStatus().getState() == TaskState.GRACEFUL_FAILED)
+                .filter(RemoteTask::isRetried)
+                .count();
+
+        boolean isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks;
+        synchronized (this) {
+            isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks = (idleRunningHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && retriedFailedTaskCount == failedTasks.size());
+        }
+
+        return isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks;
     }
 
+    private synchronized boolean isFailedTasksBelowThreshold()
+    {
+        // Even though failedTasks and allTasks are marked as Guard, the whole expression need to be evaluated synchronously to avoid failedTasks and allTasks are updated from the callback thread in the middle of the expression evaluation.
+        return failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
+    }
     private boolean isRecoverable(List<ExecutionFailureInfo> failures)
     {
         for (ExecutionFailureInfo failure : failures) {
@@ -700,16 +785,7 @@ public final class SqlStageExecution
 
     public Set<ErrorCode> getRecoverableErrorCodes()
     {
-        if (recoveryErrorCodes.isPresent()) {
-            return recoveryErrorCodes.get();
-        }
         return DEFAULT_RECOVERABLE_ERROR_CODES;
-    }
-
-    private synchronized boolean isFailedTasksExceedThreshold()
-    {
-        // Even though failedTasks and allTasks are marked as Guard, the whole expression need to be evaluated synchronously to avoid failedTasks and allTasks are updated from the callback thread in the middle of the expression evaluation.
-        return failedTasks.size() < allTasks.size() * maxFailedTaskPercentage;
     }
 
     private synchronized void updateFinalTaskInfo(TaskInfo finalTaskInfo)

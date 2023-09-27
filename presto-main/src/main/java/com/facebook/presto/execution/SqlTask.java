@@ -63,6 +63,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static com.facebook.presto.execution.TaskState.ABORTED;
 import static com.facebook.presto.execution.TaskState.FAILED;
+import static com.facebook.presto.execution.TaskState.GRACEFUL_FAILED;
 import static com.facebook.presto.util.Failures.toFailures;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -198,6 +199,9 @@ public class SqlTask
                     // closed buffers signal to upstream tasks that everything finished cleanly
                     outputBuffer.fail();
                 }
+                else if (newState == GRACEFUL_FAILED) {
+                    outputBuffer.destroy();
+                }
                 else {
                     outputBuffer.destroy();
                 }
@@ -288,6 +292,7 @@ public class SqlTask
         long totalCpuTimeInNanos = 0L;
         long retryableSplitCount = 0L;
         LongSet completedSplits = LongArraySet.of();
+        boolean isTaskIdling = false;
         if (taskHolder.getFinalTaskInfo() != null) {
             TaskStats taskStats = taskHolder.getFinalTaskInfo().getStats();
             queuedPartitionedDrivers = taskStats.getQueuedPartitionedDrivers();
@@ -322,6 +327,7 @@ public class SqlTask
             fullGcTimeInMillis = taskContext.getFullGcTime().toMillis();
             completedSplits = taskContext.getCompletedSplitSequenceIds();
             retryableSplitCount = taskContext.getRetryableSplitCount();
+            isTaskIdling = taskHolder.getTaskExecution().isTaskIdling();
         }
         return new TaskStatus(
                 taskInstanceId.getUuidLeastSignificantBits(),
@@ -346,7 +352,8 @@ public class SqlTask
                 taskStatusAgeInMillis,
                 queuedPartitionedSplitsWeight,
                 runningPartitionedSplitsWeight,
-                retryableSplitCount);
+                retryableSplitCount,
+                isTaskIdling);
     }
 
     private TaskStats getTaskStats(TaskHolder taskHolder)
