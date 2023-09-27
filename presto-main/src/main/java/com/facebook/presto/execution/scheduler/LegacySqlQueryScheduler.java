@@ -444,11 +444,8 @@ public class LegacySqlQueryScheduler
 
                         // modify parent and children based on the results of the scheduling
                         if (result.isFinished()) {
-                            if (stageExecution.getFragment().isLeaf()) {
-                                boolean isNoMoreRetry = stageExecution.noMoreRetry();
-                                if (isNoMoreRetry || stageScheduler instanceof FixedSourcePartitionedScheduler) {
-                                    stageExecution.schedulingComplete();
-                                }
+                            if (stageScheduler instanceof SourcePartitionedScheduler) {
+                                stageExecution.schedulingCompleteIfRetryingSplits();
                             }
                             else {
                                 stageExecution.schedulingComplete();
@@ -476,6 +473,9 @@ public class LegacySqlQueryScheduler
                                     break;
                                 case NO_ACTIVE_DRIVER_GROUP:
                                     schedulerStats.getNoActiveDriverGroup().update(1);
+                                    break;
+                                case WAITING_FOR_SPLIT_RETRY:
+                                    schedulerStats.getWaitingForSplitRetry().update(1);
                                     break;
                                 default:
                                     throw new UnsupportedOperationException("Unknown blocked reason: " + result.getBlockedReason().get());

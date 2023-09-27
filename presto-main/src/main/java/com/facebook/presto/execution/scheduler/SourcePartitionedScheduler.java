@@ -156,6 +156,17 @@ public class SourcePartitionedScheduler
             }
         };
     }
+    public static StageScheduler newSourcePartitionedSchedulerWithSplitRetryAsStageScheduler(
+            SqlStageExecution stage,
+            PlanNodeId partitionedNode,
+            SplitSource splitSource,
+            SplitPlacementPolicy splitPlacementPolicy,
+            int splitBatchSize)
+    {
+        SourcePartitionedScheduler sourcePartitionedScheduler = new SourcePartitionedScheduler(stage, partitionedNode, splitSource, splitPlacementPolicy, splitBatchSize, false);
+        sourcePartitionedScheduler.startLifespan(Lifespan.taskWide(), NOT_PARTITIONED);
+        return new SplitRetrySourcePartitionedScheduler(sourcePartitionedScheduler, stage);
+    }
 
     /**
      * Obtains a {@code SourceScheduler} suitable for use in FixedSourcePartitionedScheduler.
