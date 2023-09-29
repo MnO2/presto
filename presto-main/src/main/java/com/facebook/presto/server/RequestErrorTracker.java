@@ -20,7 +20,6 @@ import com.facebook.presto.server.remotetask.Backoff;
 import com.facebook.presto.spi.ErrorCodeSupplier;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.PrestoTransportException;
-import com.google.common.base.Ticker;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -44,6 +43,9 @@ import java.util.concurrent.TimeoutException;
 import static com.facebook.presto.spi.HostAddress.fromUri;
 import static com.facebook.presto.spi.StandardErrorCode.REMOTE_TASK_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.TOO_MANY_REQUESTS_FAILED;
+import static com.facebook.presto.spi.StandardErrorCode.TOO_MANY_REQUESTS_FAILED_SOURCE_1;
+import static com.facebook.presto.spi.StandardErrorCode.TOO_MANY_REQUESTS_FAILED_SOURCE_2;
+import static com.facebook.presto.spi.StandardErrorCode.TOO_MANY_REQUESTS_FAILED_SOURCE_3;
 import static com.facebook.presto.util.Failures.WORKER_NODE_ERROR;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -74,14 +76,15 @@ public class RequestErrorTracker
     private final String jobDescription;
     private final Backoff backoff;
     public boolean isLeaf;
+    public int source;
     private final Queue<Throwable> errorsSinceLastSuccess = new ConcurrentLinkedQueue<>();
 
     public RequestErrorTracker(Object id, URI uri, ErrorCodeSupplier errorCode, String nodeErrorMessage, Duration maxErrorDuration, ScheduledExecutorService scheduledExecutor, String jobDescription)
     {
-        this(id, uri, errorCode, nodeErrorMessage, maxErrorDuration, scheduledExecutor, jobDescription, false);
+        this(id, uri, errorCode, nodeErrorMessage, maxErrorDuration, scheduledExecutor, jobDescription, false, 0);
     }
 
-    private RequestErrorTracker(Object id, URI uri, ErrorCodeSupplier errorCode, String nodeErrorMessage, Duration maxErrorDuration, ScheduledExecutorService scheduledExecutor, String jobDescription, boolean isLeaf)
+    private RequestErrorTracker(Object id, URI uri, ErrorCodeSupplier errorCode, String nodeErrorMessage, Duration maxErrorDuration, ScheduledExecutorService scheduledExecutor, String jobDescription, boolean isLeaf, int source)
     {
         this.id = requireNonNull(id, "id is null");
         this.uri = requireNonNull(uri, "uri is null");
@@ -91,20 +94,21 @@ public class RequestErrorTracker
         this.backoff = initBackoff(maxErrorDuration, isLeaf);
         this.jobDescription = requireNonNull(jobDescription, "jobDescription is null");
         this.isLeaf = isLeaf;
+        this.source = source;
     }
 
     private Backoff initBackoff(Duration maxErrorDuration, boolean isLeaf)
     {
-        if (!isLeaf) {
-            return new Backoff(requireNonNull(maxErrorDuration, "maxErrorDuration is null"));
-        }
-        Duration duration = new Duration(maxErrorDuration.toMillis() * 2, MILLISECONDS);
-        return new Backoff(5, duration, Ticker.systemTicker(), LEAF_BACKOFF_DELAY_INTERVALS);
+//        if (!isLeaf) {
+        return new Backoff(requireNonNull(maxErrorDuration, "maxErrorDuration is null"));
+//        }
+//        Duration duration = new Duration(maxErrorDuration.toMillis() * 2, MILLISECONDS);
+//        return new Backoff(5, duration, Ticker.systemTicker(), LEAF_BACKOFF_DELAY_INTERVALS);
     }
 
-    public static RequestErrorTracker taskRequestErrorTracker(TaskId taskId, URI taskUri, Duration maxErrorDuration, ScheduledExecutorService scheduledExecutor, String jobDescription, boolean isLeaf)
+    public static RequestErrorTracker taskRequestErrorTracker(TaskId taskId, URI taskUri, Duration maxErrorDuration, ScheduledExecutorService scheduledExecutor, String jobDescription, boolean isLeaf, int source)
     {
-        return new RequestErrorTracker(taskId, taskUri, REMOTE_TASK_ERROR, WORKER_NODE_ERROR, maxErrorDuration, scheduledExecutor, jobDescription, isLeaf);
+        return new RequestErrorTracker(taskId, taskUri, REMOTE_TASK_ERROR, WORKER_NODE_ERROR, maxErrorDuration, scheduledExecutor, jobDescription, isLeaf, source);
     }
 
     public ListenableFuture<?> acquireRequestPermit()
@@ -171,8 +175,25 @@ public class RequestErrorTracker
 
         // fail the operation, if we have more than X failures in a row and more than Y seconds have passed since the last request
         if (backoff.failure()) {
+            ErrorCodeSupplier errorCode;
+
+            switch (source) {
+                case 0:
+                    errorCode = TOO_MANY_REQUESTS_FAILED;
+                    break;
+                case 1:
+                    errorCode = TOO_MANY_REQUESTS_FAILED_SOURCE_1;
+                    break;
+                case 2:
+                    errorCode = TOO_MANY_REQUESTS_FAILED_SOURCE_2;
+                    break;
+                default:
+                    errorCode = TOO_MANY_REQUESTS_FAILED_SOURCE_3;
+                    break;
+            }
+
             // it is weird to mark the task failed locally and then cancel the remote task, but there is no way to tell a remote task that it is failed
-            PrestoException exception = new PrestoTransportException(TOO_MANY_REQUESTS_FAILED,
+            PrestoException exception = new PrestoTransportException(errorCode,
                     fromUri(uri),
                     format("%s (%s %s - %s failures, failure duration %s, total failed request time %s)",
                             nodeErrorMessage,
