@@ -99,8 +99,9 @@ public class SourcePartitionedScheduler
     private State state = State.INITIALIZED;
 
     private SettableFuture<?> whenFinishedOrNewLifespanAdded = SettableFuture.create();
+    private boolean emptySplit;
 
-    private SourcePartitionedScheduler(
+    SourcePartitionedScheduler(
             SqlStageExecution stage,
             PlanNodeId partitionedNode,
             SplitSource splitSource,
@@ -215,6 +216,7 @@ public class SourcePartitionedScheduler
         dropListenersFromWhenFinishedOrNewLifespansAdded();
 
         int overallSplitAssignmentCount = 0;
+
         ImmutableSet.Builder<RemoteTask> overallNewTasks = ImmutableSet.builder();
         List<ListenableFuture<?>> overallBlockedFutures = new ArrayList<>();
         boolean anyBlockedOnPlacements = false;
@@ -255,6 +257,7 @@ public class SourcePartitionedScheduler
                                     new EmptySplit(splitSource.getConnectorId()),
                                     lifespan,
                                     NON_CACHEABLE));
+                            emptySplit = true;
                         }
                         scheduleGroup.state = ScheduleGroupState.NO_MORE_SPLITS;
                     }
@@ -351,14 +354,15 @@ public class SourcePartitionedScheduler
                     return ScheduleResult.nonBlocked(
                             true,
                             overallNewTasks.build(),
-                            overallSplitAssignmentCount);
+                            overallSplitAssignmentCount,
+                            emptySplit);
                 default:
                     throw new IllegalStateException("Unknown state");
             }
         }
 
         if (anyNotBlocked) {
-            return ScheduleResult.nonBlocked(false, overallNewTasks.build(), overallSplitAssignmentCount);
+            return ScheduleResult.nonBlocked(false, overallNewTasks.build(), overallSplitAssignmentCount, emptySplit);
         }
 
         if (anyBlockedOnPlacements) {
@@ -392,7 +396,8 @@ public class SourcePartitionedScheduler
                 overallNewTasks.build(),
                 nonCancellationPropagating(whenAnyComplete(overallBlockedFutures)),
                 blockedReason,
-                overallSplitAssignmentCount);
+                overallSplitAssignmentCount,
+                emptySplit);
     }
 
     private synchronized void dropListenersFromWhenFinishedOrNewLifespansAdded()
