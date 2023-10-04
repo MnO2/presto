@@ -86,24 +86,31 @@ public class ScheduleResult
     private final Optional<BlockedReason> blockedReason;
     private final boolean finished;
     private final int splitsScheduled;
+    private final boolean emptySplit;
 
-    public static ScheduleResult nonBlocked(boolean finished, Iterable<? extends RemoteTask> newTasks, int splitsScheduled)
+    public static ScheduleResult nonBlocked(boolean finished, Iterable<? extends RemoteTask> newTasks, int splitsScheduled, boolean emptySplit)
     {
-        return new ScheduleResult(finished, newTasks, immediateFuture(null), Optional.empty(), splitsScheduled);
+        return new ScheduleResult(finished, newTasks, immediateFuture(null), Optional.empty(), splitsScheduled, emptySplit);
     }
 
-    public static ScheduleResult blocked(boolean finished, Iterable<? extends RemoteTask> newTasks, ListenableFuture<?> blocked, BlockedReason blockedReason, int splitsScheduled)
+    public static ScheduleResult blocked(boolean finished, Iterable<? extends RemoteTask> newTasks, ListenableFuture<?> blocked, BlockedReason blockedReason, int splitsScheduled, boolean emptySplit)
     {
-        return new ScheduleResult(finished, newTasks, blocked, Optional.of(requireNonNull(blockedReason, "blockedReason is null")), splitsScheduled);
+        return new ScheduleResult(finished, newTasks, blocked, Optional.of(requireNonNull(blockedReason, "blockedReason is null")), splitsScheduled, emptySplit);
     }
 
-    private ScheduleResult(boolean finished, Iterable<? extends RemoteTask> newTasks, ListenableFuture<?> blocked, Optional<BlockedReason> blockedReason, int splitsScheduled)
+    private ScheduleResult(boolean finished, Iterable<? extends RemoteTask> newTasks, ListenableFuture<?> blocked, Optional<BlockedReason> blockedReason, int splitsScheduled, boolean emptySplit)
     {
         this.finished = finished;
         this.newTasks = ImmutableSet.copyOf(requireNonNull(newTasks, "newTasks is null"));
         this.blocked = requireNonNull(blocked, "blocked is null");
         this.blockedReason = requireNonNull(blockedReason, "blockedReason is null");
         this.splitsScheduled = splitsScheduled;
+        this.emptySplit = emptySplit;
+    }
+
+    public boolean isEmptySplit()
+    {
+        return emptySplit;
     }
 
     public boolean isFinished()

@@ -25,11 +25,13 @@ public class SplitRetrySourcePartitionedScheduler
     SourcePartitionedScheduler sourcePartitionedScheduler;
     SqlStageExecution stage;
     boolean isSourcePartitionedSchedulerFinished;
+    int splitsScheduled;
 
     public SplitRetrySourcePartitionedScheduler(SourcePartitionedScheduler sourcePartitionedScheduler, SqlStageExecution stage)
     {
         this.sourcePartitionedScheduler = requireNonNull(sourcePartitionedScheduler);
         this.stage = requireNonNull(stage);
+        this.splitsScheduled = 0;
     }
 
     @Override
@@ -38,7 +40,7 @@ public class SplitRetrySourcePartitionedScheduler
         if (isSourcePartitionedSchedulerFinished) {
             stage.transitionToSchedulingRetriedSplits();
             if (stage.getBlocked().isDone()) {
-                return ScheduleResult.nonBlocked(true, ImmutableList.of(), 0);
+                return ScheduleResult.nonBlocked(true, ImmutableList.of(), 0, false);
             }
             else {
                 return ScheduleResult.blocked(
@@ -46,7 +48,8 @@ public class SplitRetrySourcePartitionedScheduler
                         ImmutableList.of(),
                         nonCancellationPropagating(stage.getBlocked()),
                         ScheduleResult.BlockedReason.WAITING_FOR_SPLIT_RETRY,
-                        0);
+                        0,
+                        false);
             }
         }
         else {
@@ -55,14 +58,23 @@ public class SplitRetrySourcePartitionedScheduler
 
             if (scheduleResult.isFinished()) {
                 isSourcePartitionedSchedulerFinished = true;
-                return ScheduleResult.blocked(
-                        false,
-                        scheduleResult.getNewTasks(),
-                        nonCancellationPropagating(stage.getBlocked()),
-                        ScheduleResult.BlockedReason.WAITING_FOR_SPLIT_RETRY,
-                        scheduleResult.getSplitsScheduled());
+                splitsScheduled += scheduleResult.getSplitsScheduled();
+
+                if (!scheduleResult.isEmptySplit()) {
+                    return ScheduleResult.blocked(
+                            false,
+                            scheduleResult.getNewTasks(),
+                            nonCancellationPropagating(stage.getBlocked()),
+                            ScheduleResult.BlockedReason.WAITING_FOR_SPLIT_RETRY,
+                            scheduleResult.getSplitsScheduled(),
+                            false);
+                }
+                else {
+                    return ScheduleResult.nonBlocked(true, scheduleResult.getNewTasks(), scheduleResult.getSplitsScheduled(), true);
+                }
             }
             else {
+                splitsScheduled += scheduleResult.getSplitsScheduled();
                 return scheduleResult;
             }
         }
