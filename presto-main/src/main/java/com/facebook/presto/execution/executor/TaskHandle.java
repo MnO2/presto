@@ -171,9 +171,9 @@ public class TaskHandle
         return runningLeafSplits.size();
     }
 
-    synchronized int getRunningIntermediateSplits()
+    synchronized boolean isTotalRunningSplitEmpty()
     {
-        return runningIntermediateSplits.size();
+        return runningLeafSplits.isEmpty() && runningIntermediateSplits.isEmpty();
     }
 
     public synchronized long getScheduledNanos()
@@ -229,6 +229,14 @@ public class TaskHandle
             return;
         }
         hostShutDownListener.get().handleShutdown(taskId);
+    }
+
+    public void forceFailure()
+    {
+        if (!hostShutDownListener.isPresent()) {
+            return;
+        }
+        hostShutDownListener.get().forceFailure(taskId);
     }
 
     public synchronized int getQueuedSplitSize()

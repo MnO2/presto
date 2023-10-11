@@ -17,6 +17,9 @@ import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskStateMachine;
 import com.facebook.presto.operator.HostShuttingDownException;
 import com.facebook.presto.operator.TaskContext;
+import com.facebook.presto.spi.PrestoException;
+
+import static com.facebook.presto.spi.StandardErrorCode.UNRECOVERABLE_HOST_SHUTTING_DOWN;
 
 public class TaskShutdownManager
         implements TaskShutDownListener
@@ -35,6 +38,13 @@ public class TaskShutdownManager
     {
         String errorMessage = String.format("killing pending task %s due to host being shutting down", taskId);
         taskStateMachine.graceful_failed(new HostShuttingDownException(errorMessage, System.nanoTime()));
+    }
+
+    @Override
+    public void forceFailure(TaskId taskId)
+    {
+        String errorMessage = String.format("the shutdown process force the task to fail due to unable to recover", taskId);
+        taskStateMachine.failed(new PrestoException(UNRECOVERABLE_HOST_SHUTTING_DOWN, errorMessage));
     }
 
     @Override
