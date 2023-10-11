@@ -105,6 +105,7 @@ public class TaskExecutor
     private static final Duration DEFAULT_INTERRUPT_SPLIT_INTERVAL = new Duration(60, SECONDS);
 
     private static final AtomicLong NEXT_RUNNER_ID = new AtomicLong();
+    public static final String OB_WAIT_ABORT = "obWait-abprt";
     public static final String OB_WAIT_OVER = "obWait-over";
     public static final String OB_WAIT = "obWait";
     public static final String SPLIT_WAIT = "splitWait";
@@ -250,7 +251,7 @@ public class TaskExecutor
                         TaskId taskId = taskHandle.getTaskId();
                         if (!taskHandle.getOutputBuffer().isPresent()) {
                             log.info("No output buffer for task %s", taskId);
-                            taskHandle.handleShutDown();
+                            taskHandle.forceFailure();
                             return;
                         }
 
@@ -265,7 +266,7 @@ public class TaskExecutor
                                     builderWithOutputBufferInfo("init", shuttingdownNode, outputBuffer)
                                             .build());
 
-                            while (taskHandle.getRunningLeafSplits() > 0 || taskHandle.getRunningIntermediateSplits() > 0) {
+                            while (!taskHandle.isTotalRunningSplitEmpty()) {
                                 try {
                                     TaskShutdownStats waitingForSplitStats = builderWithOutputBufferInfo(SPLIT_WAIT, shuttingdownNode, outputBuffer)
                                             .setPendingRunningSplitState(SPLIT_WAIT, System.nanoTime() - startTime)
@@ -298,7 +299,11 @@ public class TaskExecutor
                             if (!outputBuffer.isDrainable()) {
                                 log.info("The output buffer for task %s is not drainable, fail the output buffer to notify downstream.", taskId);
                                 outputBuffer.fail();
-                                taskHandle.handleShutDown();
+                                TaskShutdownStats shuttingDownStats = builderWithOutputBufferInfo(OB_WAIT_ABORT, shuttingdownNode, outputBuffer)
+                                        .setOutputBufferStage(OB_WAIT_ABORT, System.nanoTime() - startTime)
+                                        .build();
+                                taskHandle.updateTaskShutdownState(shuttingDownStats);
+                                taskHandle.forceFailure();
                                 return;
                             }
 

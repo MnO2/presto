@@ -19,5 +19,7 @@ public interface TaskShutDownListener
 {
     void handleShutdown(TaskId taskId);
 
+    void forceFailure(TaskId taskId);
+
     void addStats(TaskShutdownStats taskShutdownStats);
 }
