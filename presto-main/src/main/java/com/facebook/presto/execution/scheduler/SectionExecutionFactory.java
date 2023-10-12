@@ -344,6 +344,7 @@ public class SectionExecutionFactory
                             .map(task -> (HttpRemoteTask) task)
                             .collect(onlyElement());
                     String failingNodeID = taskToRecover.getNodeId();
+
                     log.warn("Going to recover task - %s, failed on node = %s", failedTaskId, failingNodeID);
 
                     List<HttpRemoteTask> activeRemoteTasks = stageExecution.getAllTasks().stream()
@@ -391,8 +392,8 @@ public class SectionExecutionFactory
                                 //track how many splits we are retrying from the source task
                                 splitRetryStats.addMetricValue(retryMetricName, RuntimeUnit.NONE, scheduledSplit.size());
                                 session.getRuntimeStats().update(splitRetryStats);
-                                boolean isSplitAdded = httpRemoteTask.addSplits(splitsToAdd);
-                                if (!isSplitAdded) {
+                                boolean taskIsNotDone = httpRemoteTask.addSplits(splitsToAdd);
+                                if (!taskIsNotDone) {
                                     throw new RuntimeException(String.format("Error adding split %s for retry to task %s", splitIds, httpRemoteTask.getTaskId()));
                                 }
                             }

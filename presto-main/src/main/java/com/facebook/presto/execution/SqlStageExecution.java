@@ -79,6 +79,7 @@ import static com.facebook.presto.spi.StandardErrorCode.TOO_MANY_REQUESTS_FAILED
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.MoreCollectors.onlyElement;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
@@ -512,7 +513,22 @@ public final class SqlStageExecution
         return Optional.of(scheduleTask(node, new TaskId(stateMachine.getStageExecutionId(), partition, DEFAULT_TASK_ATTEMPT_NUMBER), ImmutableMultimap.of()));
     }
 
-    public synchronized Set<RemoteTask> scheduleSplits(InternalNode node, Multimap<PlanNodeId, Split> splits, Multimap<PlanNodeId, Lifespan> noMoreSplitsNotification)
+    public boolean isNodeShutdown(InternalNode node)
+    {
+        Collection<RemoteTask> tasks = this.tasks.get(node);
+        if (tasks == null) {
+            return false;
+        }
+        for (RemoteTask task : tasks) {
+            if (task.getTaskStatus().getState() == TaskState.GRACEFUL_FAILED) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public synchronized Set<RemoteTask> scheduleSplits(InternalNode node, Set<InternalNode> nodes, Multimap<PlanNodeId, Split> splits, Multimap<PlanNodeId, Lifespan> noMoreSplitsNotification)
     {
         requireNonNull(node, "node is null");
         requireNonNull(splits, "splits is null");
@@ -537,8 +553,19 @@ public final class SqlStageExecution
         }
         else {
             task = tasks.iterator().next();
-            task.addSplits(splits);
+            boolean nodeNotShutDown = task.addSplits(splits);
+
+            if (!nodeNotShutDown) {
+                Optional<InternalNode> firstActiveNode = nodes.stream().filter(n -> n.getNodeIdentifier() != node.getNodeIdentifier()).findFirst();
+                if (!firstActiveNode.isPresent()) {
+                    throw new RuntimeException(String.format("Unable to find the next active nodes to assign the retried splits"));
+                }
+                Collection<RemoteTask> tasksToAssignRetriedSplits = this.tasks.get(firstActiveNode.get());
+                boolean retriedNodeNotShutDown = tasksToAssignRetriedSplits.iterator().next().addSplits(splits);
+                checkState(retriedNodeNotShutDown, "The node to assign the retried splits also shutdown");
+            }
         }
+
         if (noMoreSplitsNotification.size() > 1) {
             // The assumption that `noMoreSplitsNotification.size() <= 1` currently holds.
             // If this assumption no longer holds, we should consider calling task.noMoreSplits with multiple entries in one shot.
@@ -603,7 +630,7 @@ public final class SqlStageExecution
 
     public Set<InternalNode> getScheduledNodes()
     {
-        return ImmutableSet.copyOf(tasks.keySet());
+        return tasks.entrySet().stream().filter(entry -> entry.getValue().stream().noneMatch(remoteTask -> remoteTask.getTaskStatus().getState() == TaskState.GRACEFUL_FAILED)).map(entry -> entry.getKey()).collect(toImmutableSet());
     }
 
     public void recordGetSplitTime(long start)
