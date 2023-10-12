@@ -278,6 +278,7 @@ public class TaskExecutor
                                             .build());
 
                             while (!taskHandle.isTotalRunningSplitEmpty()) {
+                                checkState(taskHandle.isTaskDone(), "Task is done while waiting for total running split empty");
                                 try {
                                     TaskShutdownStats waitingForSplitStats = builderWithOutputBufferInfo(SPLIT_WAIT, shuttingdownNode, outputBuffer)
                                             .setPendingRunningSplitState(SPLIT_WAIT, System.nanoTime() - startTime)
@@ -290,7 +291,7 @@ public class TaskExecutor
                                     }
                                     Thread.sleep(waitTimeMillis);
                                 }
-                                catch (Exception ex) {
+                                catch (InterruptedException ex) {
                                     log.error(ex, "GracefulShutdown got interrupted while waiting for split completion for task %s", taskId);
                                 }
                             }
