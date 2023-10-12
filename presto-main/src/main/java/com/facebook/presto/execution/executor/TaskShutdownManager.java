@@ -52,4 +52,10 @@ public class TaskShutdownManager
     {
         taskContext.updateHostShutdownStats(taskShutdownStats);
     }
+
+    @Override
+    public boolean isTaskDone()
+    {
+        return taskStateMachine.getState().isDone();
+    }
 }

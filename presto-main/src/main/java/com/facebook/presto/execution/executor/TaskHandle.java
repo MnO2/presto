@@ -244,6 +244,14 @@ public class TaskHandle
         hostShutDownListener.get().forceFailure(taskId);
     }
 
+    public boolean isTaskDone()
+    {
+        if (!hostShutDownListener.isPresent()) {
+            return false;
+        }
+        return hostShutDownListener.get().isTaskDone();
+    }
+
     public synchronized int getQueuedSplitSize()
     {
         return queuedLeafSplits.size();

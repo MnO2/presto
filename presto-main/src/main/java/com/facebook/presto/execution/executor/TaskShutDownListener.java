@@ -22,4 +22,6 @@ public interface TaskShutDownListener
     void forceFailure(TaskId taskId);
 
     void addStats(TaskShutdownStats taskShutdownStats);
+
+    boolean isTaskDone();
 }
