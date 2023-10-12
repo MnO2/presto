@@ -147,6 +147,8 @@ public class TaskContext
     private final RuntimeStats runtimeStats = new RuntimeStats();
 
     private final BlockingDeque<Long> completedSplitSequenceIds = new LinkedBlockingDeque<>();
+    private OptionalLong queuedLeafSplitsAtShutdownStart = OptionalLong.empty();
+    private OptionalLong shutdownStartSplitCount = OptionalLong.empty();
     private OptionalLong retryableSplitCount = OptionalLong.empty();
     private Optional<String> shuttingdownNode = Optional.empty();
 
@@ -601,6 +603,12 @@ public class TaskContext
         splitStateToTime.entrySet().forEach(entry -> {
             mergedRuntimeStats.addMetricValue(entry.getKey(), RuntimeUnit.NANO, entry.getValue());
         });
+        if (queuedLeafSplitsAtShutdownStart.isPresent()) {
+            mergedRuntimeStats.addMetricValue(taskIdentifier + "[" + shuttingdownNode.orElse("") + "]-queued-leaf-split-at-shutdown-start", RuntimeUnit.NONE, queuedLeafSplitsAtShutdownStart.getAsLong());
+        }
+        if (shutdownStartSplitCount.isPresent()) {
+            mergedRuntimeStats.addMetricValue(taskIdentifier + "[" + shuttingdownNode.orElse("") + "]-pending-split-at-shutdown-start", RuntimeUnit.NONE, shutdownStartSplitCount.getAsLong());
+        }
         if (retryableSplitCount.isPresent()) {
             mergedRuntimeStats.addMetricValue(taskIdentifier + "[" + shuttingdownNode.orElse("") + "]-pending-split", RuntimeUnit.NONE, retryableSplitCount.getAsLong());
         }
@@ -650,7 +658,9 @@ public class TaskContext
                 fullGcTime.toMillis(),
                 pipelineStats,
                 mergedRuntimeStats,
-                getRetryableSplitCount());
+                getRetryableSplitCount(),
+                getShutdownStartSplitCount(),
+                getQueuedLeafSplitsAtShutdownStart());
     }
 
     private String getTaskIdentifier()
@@ -823,6 +833,12 @@ public class TaskContext
 
     public void updateHostShutdownStats(TaskShutdownStats hostShutdownStats)
     {
+        if (hostShutdownStats.getQueuedLeafSplitsAtShutdownStart().isPresent()) {
+            queuedLeafSplitsAtShutdownStart = hostShutdownStats.getQueuedLeafSplitsAtShutdownStart();
+        }
+        if (hostShutdownStats.getSplitSetAtShutdownStart().isPresent()) {
+            shutdownStartSplitCount = hostShutdownStats.getSplitSetAtShutdownStart();
+        }
         if (hostShutdownStats.getSplitsToBeRetried().isPresent()) {
             retryableSplitCount = hostShutdownStats.getSplitsToBeRetried();
         }
@@ -846,6 +862,14 @@ public class TaskContext
                 .toString();
     }
 
+    public long getQueuedLeafSplitsAtShutdownStart()
+    {
+        return queuedLeafSplitsAtShutdownStart.orElse(0L);
+    }
+    public long getShutdownStartSplitCount()
+    {
+        return shutdownStartSplitCount.orElse(0L);
+    }
     public long getRetryableSplitCount()
     {
         return retryableSplitCount.orElse(0L);

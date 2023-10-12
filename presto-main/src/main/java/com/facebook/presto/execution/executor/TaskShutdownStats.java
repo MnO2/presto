@@ -25,16 +25,20 @@ import static java.util.Objects.requireNonNull;
 @ThriftStruct
 public class TaskShutdownStats
 {
+    private final OptionalLong queuedLeafSplitsAtShutdownStart;
     private final OptionalLong splitsToBeRetried;
+    private final OptionalLong splitSetAtShutdownStart;
     private final String shuttingdownNode;
     private final Map<String, Long> bufferStageToTime;
     private final Map<String, Long> splitWaitStageToTime;
     private final Map<String, Long> outputBufferInfoValues;
 
-    private TaskShutdownStats(Map<String, Long> bufferStageToTime, Map<String, Long> splitWaitStageToTime, OptionalLong splitsToBeRetried, String shuttingdownNode, Map<String, Long> outputBufferInfoValues)
+    private TaskShutdownStats(Map<String, Long> bufferStageToTime, Map<String, Long> splitWaitStageToTime, OptionalLong queuedLeafSplitsAtShutdownStart, OptionalLong splitSetAtShutdownStart, OptionalLong splitsToBeRetried, String shuttingdownNode, Map<String, Long> outputBufferInfoValues)
     {
         this.bufferStageToTime = requireNonNull(bufferStageToTime, "bufferStageToTime is null");
         this.splitWaitStageToTime = requireNonNull(splitWaitStageToTime, "splitWaitStageToTime is null");
+        this.queuedLeafSplitsAtShutdownStart = requireNonNull(queuedLeafSplitsAtShutdownStart, "queuedLeafSplitsAtShutdownStart is null");
+        this.splitSetAtShutdownStart = requireNonNull(splitSetAtShutdownStart, "pendingSplitSetAtShutdownStart is null");
         this.splitsToBeRetried = requireNonNull(splitsToBeRetried, "splitsToBeRetried is null");
         this.shuttingdownNode = requireNonNull(shuttingdownNode, "shuttingdownNode is null");
         this.outputBufferInfoValues = ImmutableMap.copyOf(requireNonNull(outputBufferInfoValues, "outputBufferStates is null"));
@@ -49,6 +53,8 @@ public class TaskShutdownStats
     {
         private final Map<String, Long> bufferStageToTime = new HashMap<>();
         private final Map<String, Long> splitWaitStageToTime = new HashMap<>();
+        private OptionalLong queuedLeafSplitsAtShutdownStart = OptionalLong.empty();
+        private OptionalLong splitsAtShutdownStart = OptionalLong.empty();
         private OptionalLong splitsToBeRetried = OptionalLong.empty();
         private final String shuttingdownNode;
         private final Map<String, Long> outputBufferStates = new HashMap<>();
@@ -70,6 +76,17 @@ public class TaskShutdownStats
             return this;
         }
 
+        public Builder setQueuedLeafSplitsAtShutdownStart(long queuedLeafSplitsAtShutdownStart)
+        {
+            this.queuedLeafSplitsAtShutdownStart = OptionalLong.of(queuedLeafSplitsAtShutdownStart);
+            return this;
+        }
+        public Builder setSplitsAtShutdownStart(long splitsAtShutdownStart)
+        {
+            this.splitsAtShutdownStart = OptionalLong.of(splitsAtShutdownStart);
+            return this;
+        }
+
         public Builder setSplitsToBeRetried(long splitsToBeRetried)
         {
             this.splitsToBeRetried = OptionalLong.of(splitsToBeRetried);
@@ -87,6 +104,8 @@ public class TaskShutdownStats
             return new TaskShutdownStats(
                     bufferStageToTime,
                     splitWaitStageToTime,
+                    queuedLeafSplitsAtShutdownStart,
+                    splitsAtShutdownStart,
                     splitsToBeRetried,
                     shuttingdownNode,
                     outputBufferStates);
@@ -103,6 +122,14 @@ public class TaskShutdownStats
         return splitWaitStageToTime;
     }
 
+    public OptionalLong getQueuedLeafSplitsAtShutdownStart()
+    {
+        return queuedLeafSplitsAtShutdownStart;
+    }
+    public OptionalLong getSplitSetAtShutdownStart()
+    {
+        return splitSetAtShutdownStart;
+    }
     public OptionalLong getSplitsToBeRetried()
     {
         return splitsToBeRetried;
