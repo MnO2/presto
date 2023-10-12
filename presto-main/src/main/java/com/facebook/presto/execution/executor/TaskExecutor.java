@@ -263,10 +263,18 @@ public class TaskExecutor
                             long logFrequencyMillis = 30_000;
                             long lastLogTime = System.currentTimeMillis();  // to track when we last logged
                             long startTime = System.nanoTime();
+                            long pendingSplitAtShutdownStart = 0L;
+                            Set<Long> pendingSplitSetAtShutdownStart = gracefulShutdownSplitTracker.getPendingSplits().get(taskId);
+                            if (pendingSplitSetAtShutdownStart != null) {
+                                pendingSplitAtShutdownStart = pendingSplitSetAtShutdownStart.size();
+                            }
+                            long queuedLeafSplitsAtShutdownStart = taskHandle.getQueuedLeafSplits();
                             taskHandle.updateTaskShutdownState(TaskShutdownStats.builder(shuttingdownNode).build());
                             log.info("Output buffer for task %s= %s", taskId, taskHandle.getOutputBuffer().get().getInfo());
                             taskHandle.updateTaskShutdownState(
                                     builderWithOutputBufferInfo("init", shuttingdownNode, outputBuffer)
+                                            .setSplitsAtShutdownStart(pendingSplitAtShutdownStart)
+                                            .setQueuedLeafSplitsAtShutdownStart(queuedLeafSplitsAtShutdownStart)
                                             .build());
 
                             while (!taskHandle.isTotalRunningSplitEmpty()) {

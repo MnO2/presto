@@ -77,6 +77,8 @@ public class TestTaskStats
 
             ImmutableList.of(TestPipelineStats.EXPECTED),
             new RuntimeStats(),
+            0L,
+            0L,
             0L);
 
     @Test
