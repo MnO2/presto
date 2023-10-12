@@ -470,6 +470,7 @@ public class SourcePartitionedScheduler
                 .addAll(splitAssignment.keySet())
                 .addAll(noMoreSplitsNotification.keySet())
                 .build();
+
         for (InternalNode node : nodes) {
             ImmutableMultimap<PlanNodeId, Split> splits = ImmutableMultimap.<PlanNodeId, Split>builder()
                     .putAll(partitionedNode, splitAssignment.get(node))
@@ -482,6 +483,7 @@ public class SourcePartitionedScheduler
 
             newTasks.addAll(stage.scheduleSplits(
                     node,
+                    nodes,
                     splits,
                     noMoreSplits.build()));
         }
@@ -500,7 +502,7 @@ public class SourcePartitionedScheduler
         Set<InternalNode> scheduledNodes = stage.getScheduledNodes();
         Set<RemoteTask> newTasks = splitPlacementPolicy.getActiveNodes().stream()
                 .filter(node -> !scheduledNodes.contains(node))
-                .flatMap(node -> stage.scheduleSplits(node, ImmutableMultimap.of(), ImmutableMultimap.of()).stream())
+                .flatMap(node -> stage.scheduleSplits(node, scheduledNodes, ImmutableMultimap.of(), ImmutableMultimap.of()).stream())
                 .collect(toImmutableSet());
 
         // notify listeners that we have scheduled all tasks so they can set no more buffers or exchange splits
