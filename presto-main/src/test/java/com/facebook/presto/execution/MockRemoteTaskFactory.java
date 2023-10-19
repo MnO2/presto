@@ -424,9 +424,15 @@ public class MockRemoteTaskFactory
             updateSplitQueueSpace();
         }
 
+        @Override
         public synchronized void setIsRetried()
         {
             isRetriedOnFailure = true;
+        }
+
+        @Override
+        public synchronized void updateUnprocessedSplits(TaskStatus taskStatus)
+        {
         }
 
         public synchronized boolean isRetried()

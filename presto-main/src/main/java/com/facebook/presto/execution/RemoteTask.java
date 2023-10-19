@@ -49,6 +49,8 @@ public interface RemoteTask
 
     void setIsRetried();
 
+    void updateUnprocessedSplits(TaskStatus taskStatus);
+
     boolean isRetried();
 
     boolean isTaskIdling();
