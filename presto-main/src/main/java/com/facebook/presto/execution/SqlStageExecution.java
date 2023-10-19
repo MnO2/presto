@@ -667,6 +667,12 @@ public final class SqlStageExecution
                 session.getRuntimeStats().update(splitRetryStats);
             }
 
+            // Update the unprocessedSplits to make sure the completedSplits are removed before reassignment.
+            RemoteTask failedTask = getAllTasks().stream()
+                    .filter(task -> task.getTaskId().equals(taskId))
+                    .collect(onlyElement());
+            failedTask.updateUnprocessedSplits(taskStatus);
+
             RuntimeException failure = taskStatus.getFailures().stream()
                     .findFirst()
                     .map(this::rewriteTransportFailure)
@@ -676,10 +682,6 @@ public final class SqlStageExecution
             if (isFailedTasksBelowThreshold()) {
                 try {
                     stageTaskRecoveryCallback.get().recover(taskId);
-
-                    RemoteTask failedTask = getAllTasks().stream()
-                            .filter(task -> task.getTaskId().equals(taskId))
-                            .collect(onlyElement());
                     failedTask.setIsRetried();
 
                     finishedTasks.add(taskId);

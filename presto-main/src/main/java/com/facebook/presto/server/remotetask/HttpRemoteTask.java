@@ -670,10 +670,12 @@ public final class HttpRemoteTask
         isRetriedOnFailure = true;
     }
 
+    @Override
     public synchronized boolean isRetried()
     {
         return isRetriedOnFailure;
     }
+
     public synchronized boolean isTheOnlyPlanNode(PlanNodeId planNodeId)
     {
         return unprocessedSplits.keySet().size() == 1
@@ -754,6 +756,12 @@ public final class HttpRemoteTask
             nodeStatsTracker.setMemoryUsage(taskStatus.getMemoryReservationInBytes() + taskStatus.getSystemMemoryReservationInBytes());
             nodeStatsTracker.setCpuUsage(taskStatus.getTaskAgeInMillis(), taskStatus.getTotalCpuTimeInNanos());
         }
+        updateUnprocessedSplits(taskStatus);
+    }
+
+    @Override
+    public synchronized void updateUnprocessedSplits(TaskStatus taskStatus)
+    {
         LongSet sequenceIds = taskStatus.getCompletedSplitSequenceIds();
         unprocessedSplits.forEach((planNodeId, splits) -> sequenceIds.forEach((LongConsumer) splits::remove));
     }
