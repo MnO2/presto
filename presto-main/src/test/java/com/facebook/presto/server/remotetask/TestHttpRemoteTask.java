@@ -72,7 +72,6 @@ import com.google.inject.Injector;
 import com.google.inject.Module;
 import com.google.inject.Provides;
 import io.airlift.units.Duration;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -301,8 +300,8 @@ public class TestHttpRemoteTask
                         jsonCodecBinder(binder).bindJsonCodec(MetadataUpdates.class);
                         jsonBinder(binder).addKeySerializerBinding(VariableReferenceExpression.class).to(Serialization.VariableReferenceExpressionSerializer.class);
                         jsonBinder(binder).addKeyDeserializerBinding(VariableReferenceExpression.class).to(Serialization.VariableReferenceExpressionDeserializer.class);
-                        thriftCodecBinder(binder).bindThriftCodec(TaskStatus.class);
-                        thriftCodecBinder(binder).bindThriftCodec(TaskInfo.class);
+//                        thriftCodecBinder(binder).bindThriftCodec(TaskStatus.class);
+//                        thriftCodecBinder(binder).bindThriftCodec(TaskInfo.class);
                         thriftCodecBinder(binder).bindCustomThriftCodec(JodaDateTimeToEpochMillisThriftCodec.class);
                         thriftCodecBinder(binder).bindCustomThriftCodec(DurationToMillisThriftCodec.class);
                         thriftCodecBinder(binder).bindCustomThriftCodec(DataSizeToBytesThriftCodec.class);
@@ -335,10 +334,8 @@ public class TestHttpRemoteTask
                                 new TestSqlTaskManager.MockLocationFactory(),
                                 taskStatusJsonCodec,
                                 taskStatusSmileCodec,
-                                taskStatusThriftCodec,
                                 taskInfoJsonCodec,
                                 taskInfoSmileCodec,
-                                taskInfoThriftCodec,
                                 taskUpdateRequestJsonCodec,
                                 taskUpdateRequestSmileCodec,
                                 planFragmentJsonCodec,
@@ -572,7 +569,7 @@ public class TestHttpRemoteTask
                     taskState,
                     initialTaskStatus.getSelf(),
                     ImmutableSet.of(),
-                    LongSet.of(), initialTaskStatus.getFailures(),
+                    initialTaskStatus.getFailures(),
                     initialTaskStatus.getQueuedPartitionedDrivers(),
                     initialTaskStatus.getRunningPartitionedDrivers(),
                     initialTaskStatus.getOutputBufferUtilization(),
@@ -588,6 +585,7 @@ public class TestHttpRemoteTask
                     initialTaskStatus.getQueuedPartitionedSplitsWeight(),
                     initialTaskStatus.getRunningPartitionedSplitsWeight(),
                     initialTaskStatus.getRetryableSplitCount(),
+                    initialTaskStatus.getUnprocessedSplits(),
                     initialTaskStatus.getIsTaskIdling());
         }
     }

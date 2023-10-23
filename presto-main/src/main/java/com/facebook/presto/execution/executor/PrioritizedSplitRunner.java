@@ -270,6 +270,11 @@ public class PrioritizedSplitRunner
         return split.getScheduledSplit().getSequenceId();
     }
 
+    public ScheduledSplit getScheduledSplit()
+    {
+        return split.getScheduledSplit();
+    }
+
     public String getInfo()
     {
         return String.format("Split %-15s-%d %s (start = %s, wall = %s ms, cpu = %s ms, wait = %s ms, calls = %s)",

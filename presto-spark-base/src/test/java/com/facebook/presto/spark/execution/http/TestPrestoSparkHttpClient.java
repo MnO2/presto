@@ -68,7 +68,6 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
@@ -1139,7 +1138,6 @@ public class TestPrestoSparkHttpClient
                         taskState,
                         location,
                         ImmutableSet.of(),
-                        LongSet.of(),
                         ImmutableList.of(),
                         0,
                         0,
@@ -1156,6 +1154,7 @@ public class TestPrestoSparkHttpClient
                         0L,
                         0L,
                         0L,
+                        ImmutableList.of(),
                         false);
             }
         }

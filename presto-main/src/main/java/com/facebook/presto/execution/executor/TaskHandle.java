@@ -14,6 +14,7 @@
 package com.facebook.presto.execution.executor;
 
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitConcurrencyController;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffer;
@@ -32,6 +33,7 @@ import java.util.Queue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.DoubleSupplier;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
@@ -145,16 +147,15 @@ public class TaskHandle
     public synchronized boolean enqueueSplit(PrioritizedSplitRunner split)
     {
         if (destroyed) {
-            //TaskExecutor::540 (check the else block)
             return false;
         }
-        if (!isShuttingDown.get()) {
-            queuedLeafSplits.add(split);
-        }
-        else {
-            checkState(!split.isSplitAlreadyStarted(), "Split we are avoiding to queue was already started!");
-        }
+        queuedLeafSplits.add(split);
         return true;
+    }
+
+    public synchronized List<ScheduledSplit> getUnprocessedSplits()
+    {
+        return queuedLeafSplits.stream().map(PrioritizedSplitRunner::getScheduledSplit).collect(Collectors.toList());
     }
 
     public synchronized boolean recordIntermediateSplit(PrioritizedSplitRunner split)

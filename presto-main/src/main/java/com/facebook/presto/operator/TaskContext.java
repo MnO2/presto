@@ -44,8 +44,6 @@ import com.google.common.util.concurrent.AtomicDouble;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
-import it.unimi.dsi.fastutil.longs.LongArraySet;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import org.joda.time.DateTime;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -817,18 +815,6 @@ public class TaskContext
         return searchFrom(taskPlan.get())
                 .where(node -> node.getId().equals(planNodeId) && nodeType.isInstance(node))
                 .findSingle();
-    }
-
-    public LongSet getCompletedSplitSequenceIds()
-    {
-        LongSet list = LongArraySet.of();
-        list.addAll(completedSplitSequenceIds);
-        return list;
-    }
-
-    public void addCompletedSplit(Long splitSequenceId)
-    {
-        completedSplitSequenceIds.add(splitSequenceId);
     }
 
     public void updateHostShutdownStats(TaskShutdownStats hostShutdownStats)

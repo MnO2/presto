@@ -74,9 +74,6 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.Duration;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
@@ -101,7 +98,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.LongConsumer;
 import java.util.stream.Stream;
 
 import static com.facebook.airlift.http.client.HttpStatus.NO_CONTENT;
@@ -174,8 +170,6 @@ public final class HttpRemoteTask
 
     @GuardedBy("this")
     private final SetMultimap<PlanNodeId, ScheduledSplit> pendingSplits = HashMultimap.create();
-    @GuardedBy("this")
-    private final Map<PlanNodeId, Long2ObjectMap<ScheduledSplit>> unprocessedSplits = new HashMap<>();
     @GuardedBy("this")
     private volatile int pendingSourceSplitCount;
     @GuardedBy("this")
@@ -333,11 +327,6 @@ public final class HttpRemoteTask
             for (Entry<PlanNodeId, Split> entry : requireNonNull(initialSplits, "initialSplits is null").entries()) {
                 ScheduledSplit scheduledSplit = new ScheduledSplit(nextSplitId.getAndIncrement(), entry.getKey(), entry.getValue());
                 pendingSplits.put(entry.getKey(), scheduledSplit);
-                if (tableScanPlanNodeIds.contains(entry.getKey())) {
-                    unprocessedSplits
-                            .computeIfAbsent(entry.getKey(), (k) -> new Long2ObjectOpenHashMap<>())
-                            .put(scheduledSplit.getSequenceId(), scheduledSplit);
-                }
             }
             int pendingSourceSplitCount = 0;
             long pendingSourceSplitsWeight = 0;
@@ -487,9 +476,6 @@ public final class HttpRemoteTask
                 ScheduledSplit scheduledSplit = new ScheduledSplit(nextSplitId.getAndIncrement(), sourceId, split);
                 if (pendingSplits.put(sourceId, scheduledSplit)) {
                     if (isTableScanSource) {
-                        unprocessedSplits
-                                .computeIfAbsent(entry.getKey(), (k) -> new Long2ObjectOpenHashMap<>())
-                                .put(scheduledSplit.getSequenceId(), scheduledSplit);
                         added++;
                         addedWeight = addExact(addedWeight, split.getSplitWeight().getRawValue());
                     }
@@ -676,15 +662,11 @@ public final class HttpRemoteTask
         return isRetriedOnFailure;
     }
 
-    public synchronized boolean isTheOnlyPlanNode(PlanNodeId planNodeId)
-    {
-        return unprocessedSplits.keySet().size() == 1
-                && unprocessedSplits.keySet().iterator().next().equals(planNodeId);
-    }
-
     public synchronized Collection<ScheduledSplit> getAllUnprocessedSplits(PlanNodeId planNodeId)
     {
-        return unprocessedSplits.get(planNodeId).values();
+        List<ScheduledSplit> unprocessedSplitsFromTaskStatus = taskStatusFetcher.getTaskStatus().getUnprocessedSplits();
+        unprocessedSplitsFromTaskStatus.addAll(pendingSplits.values());
+        return unprocessedSplitsFromTaskStatus;
     }
 
     private long getQueuedPartitionedSplitsWeight()
@@ -756,14 +738,6 @@ public final class HttpRemoteTask
             nodeStatsTracker.setMemoryUsage(taskStatus.getMemoryReservationInBytes() + taskStatus.getSystemMemoryReservationInBytes());
             nodeStatsTracker.setCpuUsage(taskStatus.getTaskAgeInMillis(), taskStatus.getTotalCpuTimeInNanos());
         }
-        updateUnprocessedSplits(taskStatus);
-    }
-
-    @Override
-    public synchronized void updateUnprocessedSplits(TaskStatus taskStatus)
-    {
-        LongSet sequenceIds = taskStatus.getCompletedSplitSequenceIds();
-        unprocessedSplits.forEach((planNodeId, splits) -> sequenceIds.forEach((LongConsumer) splits::remove));
     }
 
     private synchronized void processTaskUpdate(TaskInfo newValue, List<TaskSource> sources)

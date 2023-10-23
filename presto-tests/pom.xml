@@ -102,10 +102,6 @@
             <artifactId>log</artifactId>
         </dependency>
         <dependency>
-            <groupId>it.unimi.dsi</groupId>
-            <artifactId>fastutil</artifactId>
-        </dependency>
-        <dependency>
             <groupId>com.facebook.airlift</groupId>
             <artifactId>node</artifactId>
         </dependency>

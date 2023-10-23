@@ -671,7 +671,6 @@ public final class SqlStageExecution
             RemoteTask failedTask = getAllTasks().stream()
                     .filter(task -> task.getTaskId().equals(taskId))
                     .collect(onlyElement());
-            failedTask.updateUnprocessedSplits(taskStatus);
 
             RuntimeException failure = taskStatus.getFailures().stream()
                     .findFirst()

@@ -66,6 +66,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.function.DoubleSupplier;
@@ -198,8 +199,8 @@ public class TaskExecutor
     private final AtomicBoolean isGracefulShutdownStarted = new AtomicBoolean(false);
     private final AtomicBoolean isGracefulShutdownFinished = new AtomicBoolean(false);
     private final GracefulShutdownSplitTracker gracefulShutdownSplitTracker;
-
     private volatile boolean lowMemory;
+    private AtomicInteger pendingUpdateTasks = new AtomicInteger(0);
 
     @Inject
     public TaskExecutor(TaskManagerConfig config, EmbedVersion embedVersion, MultilevelSplitQueue splitQueue, GracefulShutdownSplitTracker gracefulShutdownSplitTracker)
@@ -276,6 +277,11 @@ public class TaskExecutor
                                             .setSplitsAtShutdownStart(pendingSplitAtShutdownStart)
                                             .setQueuedLeafSplitsAtShutdownStart(queuedLeafSplitsAtShutdownStart)
                                             .build());
+
+                            // wait for the updateTask to update the queuedLeafSplits
+                            while (pendingUpdateTasks.get() > 0) {
+                                Thread.sleep(waitTimeMillis);
+                            }
 
                             while (!taskHandle.isTotalRunningSplitEmpty()) {
                                 checkState(!taskHandle.isTaskDone(), "Task is done while waiting for total running split empty");
@@ -665,7 +671,6 @@ public class TaskExecutor
 
         log.debug("Task finished or failed %s", taskHandle.getTaskId());
     }
-
     public List<ListenableFuture<Long>> enqueueSplits(TaskHandle taskHandle, boolean intermediate, List<? extends SplitRunner> taskSplits)
     {
         List<PrioritizedSplitRunner> splitsToDestroy = new ArrayList<>();
@@ -680,10 +685,7 @@ public class TaskExecutor
                         globalScheduledTimeMicros,
                         blockedQuantaWallTime,
                         unblockedQuantaWallTime);
-                if (taskSplit.getScheduledSplit() != null) {
-                    log.warn("Adding split %s to pending split tracker for task %s", taskSplit.getScheduledSplit().getSequenceId(), taskHandle.getTaskId());
-                    gracefulShutdownSplitTracker.getPendingSplits().computeIfAbsent(taskHandle.getTaskId(), k -> ConcurrentHashMap.newKeySet()).add(taskSplit.getScheduledSplit().getSequenceId());
-                }
+
                 if (intermediate) {
                     // add the runner to the handle so it can be destroyed if the task is canceled
                     if (taskHandle.recordIntermediateSplit(prioritizedSplitRunner)) {
@@ -703,7 +705,6 @@ public class TaskExecutor
                         addNewEntrants();
                     }
                     else {
-                        //FIXME check if this can cause correctness issue
                         splitsToDestroy.add(prioritizedSplitRunner);
                     }
                 }
@@ -1388,5 +1389,15 @@ public class TaskExecutor
     public boolean getIsGracefulShutdownFinished()
     {
         return isGracefulShutdownFinished.get();
+    }
+
+    public void incrementPendingUpdateTaskCount()
+    {
+        pendingUpdateTasks.addAndGet(1);
+    }
+
+    public void decrementPendingUpdateTaskCount()
+    {
+        pendingUpdateTasks.addAndGet(-1);
     }
 }

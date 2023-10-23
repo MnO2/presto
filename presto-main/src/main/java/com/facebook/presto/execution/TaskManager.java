@@ -48,7 +48,7 @@ public interface TaskManager
     /**
      * Gets the status for the specified task.
      */
-    TaskStatus getTaskStatus(TaskId taskId);
+    TaskStatus getTaskStatus(TaskId taskId, boolean includeUnprocessedSplits);
 
     /**
      * Gets future info for the task after the state changes from
@@ -76,7 +76,7 @@ public interface TaskManager
      * NOTE: this design assumes that only tasks that will eventually exist are
      * queried.
      */
-    ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState);
+    ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState, boolean includeUnprocessedSplits);
 
     void updateMemoryPoolAssignments(MemoryPoolAssignmentsRequest assignments);
 

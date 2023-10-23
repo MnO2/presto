@@ -15,10 +15,17 @@ package com.facebook.presto.execution.executor;
 
 import com.facebook.airlift.node.NodeInfo;
 import com.facebook.airlift.testing.TestingTicker;
+import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitRunner;
 import com.facebook.presto.execution.TaskId;
+import com.facebook.presto.execution.TestSqlTaskExecution;
+import com.facebook.presto.metadata.Split;
 import com.facebook.presto.server.ServerConfig;
+import com.facebook.presto.spi.ConnectorId;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
+import com.facebook.presto.spi.plan.PlanNodeId;
+import com.facebook.presto.testing.TestingTransactionHandle;
 import com.facebook.presto.version.EmbedVersion;
 import com.google.common.base.Ticker;
 import com.google.common.collect.ImmutableList;
@@ -43,6 +50,7 @@ import static com.facebook.presto.execution.TaskManagerConfig.TaskPriorityTracki
 import static com.facebook.presto.execution.TaskManagerConfig.TaskPriorityTracking.TASK_FAIR;
 import static com.facebook.presto.execution.executor.MultilevelSplitQueue.LEVEL_CONTRIBUTION_CAP;
 import static com.facebook.presto.execution.executor.MultilevelSplitQueue.LEVEL_THRESHOLD_SECONDS;
+import static com.facebook.presto.spi.SplitContext.NON_CACHEABLE;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -53,6 +61,14 @@ import static org.testng.Assert.assertTrue;
 
 public class TestTaskExecutor
 {
+    private static final ConnectorId CONNECTOR_ID = new ConnectorId("test");
+    private static final ConnectorTransactionHandle TRANSACTION_HANDLE = TestingTransactionHandle.create();
+
+    private ScheduledSplit newScheduledSplit(int sequenceId, PlanNodeId planNodeId, Lifespan lifespan, int begin, int count)
+    {
+        return new ScheduledSplit(sequenceId, planNodeId, new Split(CONNECTOR_ID, TRANSACTION_HANDLE, new TestSqlTaskExecution.TestingSplit(begin, begin + count), lifespan, NON_CACHEABLE));
+    }
+
     @Test(invocationCount = 100)
     public void testTasksComplete()
             throws Exception

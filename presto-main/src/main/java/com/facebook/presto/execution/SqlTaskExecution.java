@@ -458,10 +458,12 @@ public class SqlTaskExecution
                     }
 
                     // Enqueue driver runners with split lifecycle for this plan node and driver life cycle combination.
+                    ImmutableList.Builder<ScheduledSplit> scheduledSplits = ImmutableList.builder();
                     ImmutableList.Builder<DriverSplitRunner> runners = ImmutableList.builder();
                     for (ScheduledSplit scheduledSplit : pendingSplits.removeAllSplits()) {
                         // create a new driver for the split
                         runners.add(partitionedDriverRunnerFactory.createDriverRunner(scheduledSplit, lifespan));
+                        scheduledSplits.add(scheduledSplit);
                     }
                     enqueueDriverSplitRunner(false, runners.build());
 
@@ -578,7 +580,6 @@ public class SqlTaskExecution
 
                         if (result != null) {
                             log.warn("Marking split %s as completed for task %s", result, taskId);
-                            taskContext.addCompletedSplit(result);
                             splitMonitor.splitCompletedEvent(taskId, getDriverStats(), result);
                         }
                         else {
@@ -619,6 +620,16 @@ public class SqlTaskExecution
         }
     }
 
+    public List<ScheduledSplit> getUnprocessedSplits()
+    {
+        return taskHandle.getUnprocessedSplits();
+    }
+
+    public boolean isTaskIdling()
+    {
+        return taskHandle.isTaskIdling();
+    }
+
     public synchronized Set<PlanNodeId> getNoMoreSplits()
     {
         ImmutableSet.Builder<PlanNodeId> noMoreSplits = ImmutableSet.builder();
@@ -633,11 +644,6 @@ public class SqlTaskExecution
             }
         }
         return noMoreSplits.build();
-    }
-
-    public boolean isTaskIdling()
-    {
-        return taskHandle.isTaskIdling();
     }
 
     private synchronized void checkTaskCompletion()

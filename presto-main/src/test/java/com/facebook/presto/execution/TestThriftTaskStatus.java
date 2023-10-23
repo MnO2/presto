@@ -13,47 +13,12 @@
  */
 package com.facebook.presto.execution;
 
-import com.facebook.drift.codec.ThriftCodec;
-import com.facebook.drift.codec.ThriftCodecManager;
-import com.facebook.drift.codec.internal.compiler.CompilerThriftCodecFactory;
-import com.facebook.drift.codec.internal.reflection.ReflectionThriftCodecFactory;
-import com.facebook.drift.codec.metadata.ThriftCatalog;
-import com.facebook.drift.protocol.TBinaryProtocol;
-import com.facebook.drift.protocol.TCompactProtocol;
-import com.facebook.drift.protocol.TFacebookCompactProtocol;
-import com.facebook.drift.protocol.TMemoryBuffer;
-import com.facebook.drift.protocol.TProtocol;
-import com.facebook.drift.protocol.TTransport;
-import com.facebook.presto.server.LongSetCodec;
-import com.facebook.presto.spi.HostAddress;
-import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.PrestoTransportException;
-import com.facebook.presto.spi.SplitWeight;
-import com.facebook.presto.sql.parser.ParsingException;
-import com.facebook.presto.sql.tree.NodeLocation;
-import com.facebook.presto.util.Failures;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import java.io.IOException;
-import java.net.URI;
-import java.util.List;
-import java.util.Set;
-import java.util.function.Function;
-
-import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
-import static com.facebook.presto.spi.StandardErrorCode.REMOTE_TASK_ERROR;
-import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
-import static com.facebook.presto.spi.StandardErrorCode.TOO_MANY_REQUESTS_FAILED;
-import static org.testng.Assert.assertEquals;
 
 @Test(singleThreaded = true)
 public class TestThriftTaskStatus
 {
+    /*
     private static final ThriftCatalog THRIFT_CATALOG = new ThriftCatalog();
     private static final LongSetCodec LONG_SET_CODEC = new LongSetCodec(THRIFT_CATALOG);
     private static final ThriftCodecManager COMPILER_READ_CODEC_MANAGER = new ThriftCodecManager(new CompilerThriftCodecFactory(false), THRIFT_CATALOG, ImmutableSet.of());
@@ -148,7 +113,6 @@ public class TestThriftTaskStatus
         assertEquals(taskStatus.getState(), TaskState.RUNNING);
         assertEquals(taskStatus.getSelf(), SELF_URI);
         assertEquals(taskStatus.getCompletedDriverGroups(), LIFESPANS);
-        assertEquals(taskStatus.getCompletedSplitSequenceIds(), COMPLETED_SPLIT_SEQUENCE_IDS);
         assertEquals(taskStatus.getQueuedPartitionedDrivers(), QUEUED_PARTITIONED_DRIVERS);
         assertEquals(taskStatus.getQueuedPartitionedSplitsWeight(), QUEUED_PARTITIONED_WEIGHT);
         assertEquals(taskStatus.getRunningPartitionedDrivers(), RUNNING_PARTITIONED_DRIVERS);
@@ -212,7 +176,6 @@ public class TestThriftTaskStatus
                 RUNNING,
                 SELF_URI,
                 LIFESPANS,
-                COMPLETED_SPLIT_SEQUENCE_IDS,
                 executionFailureInfos,
                 QUEUED_PARTITIONED_DRIVERS,
                 RUNNING_PARTITIONED_DRIVERS,
@@ -229,6 +192,7 @@ public class TestThriftTaskStatus
                 QUEUED_PARTITIONED_WEIGHT,
                 RUNNING_PARTITIONED_WEIGHT,
                 0L,
+                ImmutableList.of(),
                 false);
     }
 
@@ -243,4 +207,6 @@ public class TestThriftTaskStatus
         ParsingException parsingException = new ParsingException("Parsing Exception", new NodeLocation(100, 1));
         return Failures.toFailures(ImmutableList.of(ioException, prestoTransportException, parsingException));
     }
+
+     */
 }

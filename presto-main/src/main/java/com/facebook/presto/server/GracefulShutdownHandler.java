@@ -295,4 +295,14 @@ public class GracefulShutdownHandler
     {
         return isGracefulShutdownCompleted;
     }
+
+    public void incrementPendingUpdateTaskCount()
+    {
+        taskExecutor.incrementPendingUpdateTaskCount();
+    }
+
+    public void decrementPendingUpdateTaskCount()
+    {
+        taskExecutor.decrementPendingUpdateTaskCount();
+    }
 }

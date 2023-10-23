@@ -189,11 +189,6 @@ public class TestGracefulShutdown
         return taskManager.getAllTaskInfo().stream().mapToLong(taskInfo -> taskInfo.getStats().getCompletedDrivers()).sum();
     }
 
-    private long getCompletedSplits(TaskManager taskManager)
-    {
-        return taskManager.getAllTaskInfo().stream().mapToLong(taskInfo -> taskInfo.getTaskStatus().getCompletedSplitSequenceIds().size()).sum();
-    }
-
     private long getRunningDrivers(TaskManager taskManager)
     {
         return taskManager.getAllTaskInfo().stream().mapToLong(taskInfo -> taskInfo.getStats().getRunningDrivers()).sum();

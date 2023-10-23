@@ -20,7 +20,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
 
 import java.net.URI;
 import java.util.List;
@@ -58,7 +57,6 @@ public class TaskStatus
     private final TaskState state;
     private final URI self;
     private final Set<Lifespan> completedDriverGroups;
-    private final LongSet completedSplitSequenceIds;
 
     private final int queuedPartitionedDrivers;
     private final long queuedPartitionedSplitsWeight;
@@ -81,6 +79,7 @@ public class TaskStatus
     private final long totalCpuTimeInNanos;
     private final long taskAgeInMillis;
     private final long retryableSplitCount;
+    private final List<ScheduledSplit> unprocessedSplits;
     private final boolean isTaskIdling;
 
     @JsonCreator
@@ -92,7 +91,6 @@ public class TaskStatus
             @JsonProperty("state") TaskState state,
             @JsonProperty("self") URI self,
             @JsonProperty("completedDriverGroups") Set<Lifespan> completedDriverGroups,
-            @JsonProperty("completedSplitSequenceIds") LongSet completedSplitSequenceIds,
             @JsonProperty("failures") List<ExecutionFailureInfo> failures,
             @JsonProperty("queuedPartitionedDrivers") int queuedPartitionedDrivers,
             @JsonProperty("runningPartitionedDrivers") int runningPartitionedDrivers,
@@ -109,6 +107,7 @@ public class TaskStatus
             @JsonProperty("queuedPartitionedSplitsWeight") long queuedPartitionedSplitsWeight,
             @JsonProperty("runningPartitionedSplitsWeight") long runningPartitionedSplitsWeight,
             @JsonProperty("retryableSplitCount") long retryableSplitCount,
+            @JsonProperty("unprocessedSplits") List<ScheduledSplit> unprocessedSplits,
             @JsonProperty("isTaskIdling") boolean isTaskIdling)
     {
         this.taskInstanceIdLeastSignificantBits = taskInstanceIdLeastSignificantBits;
@@ -118,7 +117,6 @@ public class TaskStatus
         this.state = requireNonNull(state, "state is null");
         this.self = requireNonNull(self, "self is null");
         this.completedDriverGroups = requireNonNull(completedDriverGroups, "completedDriverGroups is null");
-        this.completedSplitSequenceIds = requireNonNull(completedSplitSequenceIds, "completedSplitSequenceIds is null");
 
         checkArgument(queuedPartitionedDrivers >= 0, "queuedPartitionedDrivers must be positive");
         this.queuedPartitionedDrivers = queuedPartitionedDrivers;
@@ -146,6 +144,7 @@ public class TaskStatus
         this.totalCpuTimeInNanos = totalCpuTimeInNanos;
         this.taskAgeInMillis = taskAgeInMillis;
         this.retryableSplitCount = retryableSplitCount;
+        this.unprocessedSplits = unprocessedSplits;
         this.isTaskIdling = isTaskIdling;
     }
 
@@ -189,13 +188,6 @@ public class TaskStatus
     public Set<Lifespan> getCompletedDriverGroups()
     {
         return completedDriverGroups;
-    }
-
-    @JsonProperty
-    @ThriftField(22)
-    public LongSet getCompletedSplitSequenceIds()
-    {
-        return completedSplitSequenceIds;
     }
 
     @JsonProperty
@@ -304,6 +296,13 @@ public class TaskStatus
     }
 
     @JsonProperty
+    @ThriftField(22)
+    public List<ScheduledSplit> getUnprocessedSplits()
+    {
+        return unprocessedSplits;
+    }
+
+    @JsonProperty
     @ThriftField(23)
     public long getRetryableSplitCount()
     {
@@ -334,7 +333,7 @@ public class TaskStatus
                 PLANNED,
                 location,
                 ImmutableSet.of(),
-                LongSet.of(), ImmutableList.of(),
+                ImmutableList.of(),
                 0,
                 0,
                 0.0,
@@ -350,6 +349,7 @@ public class TaskStatus
                 0L,
                 0L,
                 0L,
+                ImmutableList.of(),
                 false);
     }
 
@@ -362,7 +362,7 @@ public class TaskStatus
                 state,
                 taskStatus.getSelf(),
                 taskStatus.getCompletedDriverGroups(),
-                LongSet.of(), exceptions,
+                exceptions,
                 taskStatus.getQueuedPartitionedDrivers(),
                 taskStatus.getRunningPartitionedDrivers(),
                 taskStatus.getOutputBufferUtilization(),
@@ -378,6 +378,7 @@ public class TaskStatus
                 taskStatus.getQueuedPartitionedSplitsWeight(),
                 taskStatus.getRunningPartitionedSplitsWeight(),
                 taskStatus.getRetryableSplitCount(),
+                taskStatus.getUnprocessedSplits(),
                 taskStatus.getIsTaskIdling());
     }
 }

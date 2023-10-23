@@ -144,6 +144,11 @@ public class RequestErrorTracker
             return;
         }
 
+        // Graceful shutdown is not a failure
+        if (reason instanceof ServiceGoneException) {
+            return;
+        }
+
         if (reason instanceof RejectedExecutionException) {
             if (reason.getMessage() == null) {
                 throw new PrestoException(errorCode, reason);

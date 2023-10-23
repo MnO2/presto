@@ -49,7 +49,7 @@ public class PrestoSparkTaskManager
     }
 
     @Override
-    public TaskStatus getTaskStatus(TaskId taskId)
+    public TaskStatus getTaskStatus(TaskId taskId, boolean includeUnprocessedSplits)
     {
         throw new UnsupportedOperationException();
     }
@@ -67,7 +67,7 @@ public class PrestoSparkTaskManager
     }
 
     @Override
-    public ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState)
+    public ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState, boolean includeUnprocessedSplits)
     {
         throw new UnsupportedOperationException();
     }

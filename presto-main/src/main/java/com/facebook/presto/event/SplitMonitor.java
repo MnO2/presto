@@ -106,7 +106,11 @@ public class SplitMonitor
     public void splitCompletedEvent(TaskId taskId, DriverStats driverStats, long splitID)
     {
         log.warn("Removing split %s from pending split tracker for task %s", splitID, taskId);
-        gracefulShutdownSplitTracker.getPendingSplits().get(taskId).remove(splitID);
+
+        if (gracefulShutdownSplitTracker.getPendingSplits().containsKey(taskId)) {
+            gracefulShutdownSplitTracker.getPendingSplits().get(taskId).remove(splitID);
+        }
+
         splitCompletedEvent(taskId, driverStats);
     }
 }
