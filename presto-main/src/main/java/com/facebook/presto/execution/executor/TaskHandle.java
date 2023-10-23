@@ -14,6 +14,7 @@
 package com.facebook.presto.execution.executor;
 
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitConcurrencyController;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffer;
@@ -47,6 +48,8 @@ public class TaskHandle
     private final TaskPriorityTracker priorityTracker;
     private final OptionalInt maxDriversPerTask;
 
+    @GuardedBy("this")
+    private List<ScheduledSplit> leafScheduledSplits = new ArrayList<>(10);
     @GuardedBy("this")
     protected final Queue<PrioritizedSplitRunner> queuedLeafSplits = new ArrayDeque<>(10);
     @GuardedBy("this")
@@ -142,19 +145,25 @@ public class TaskHandle
         return builder.build();
     }
 
-    public synchronized boolean enqueueSplit(PrioritizedSplitRunner split)
+    public synchronized boolean enqueueLeafSplit(PrioritizedSplitRunner split, ScheduledSplit scheduledSplit)
     {
         if (destroyed) {
             //TaskExecutor::540 (check the else block)
             return false;
         }
         if (!isShuttingDown.get()) {
+            leafScheduledSplits.add(scheduledSplit);
             queuedLeafSplits.add(split);
         }
         else {
             checkState(!split.isSplitAlreadyStarted(), "Split we are avoiding to queue was already started!");
         }
         return true;
+    }
+
+    public List<ScheduledSplit> getUnprocessedSplits()
+    {
+        return leafScheduledSplits;
     }
 
     public synchronized boolean recordIntermediateSplit(PrioritizedSplitRunner split)
@@ -209,6 +218,7 @@ public class TaskHandle
         PrioritizedSplitRunner split = queuedLeafSplits.poll();
         if (split != null) {
             runningLeafSplits.add(split);
+            leafScheduledSplits.remove(0);
         }
         return split;
     }

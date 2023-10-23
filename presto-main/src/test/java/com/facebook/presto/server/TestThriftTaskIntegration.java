@@ -192,7 +192,7 @@ public class TestThriftTaskIntegration
                 }
 
                 @Override
-                public TaskStatus getTaskStatus(TaskId taskId)
+                public TaskStatus getTaskStatus(TaskId taskId, boolean includeUnprocessedSplits)
                 {
                     throw new UnsupportedOperationException();
                 }
@@ -210,7 +210,7 @@ public class TestThriftTaskIntegration
                 }
 
                 @Override
-                public ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState)
+                public ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState, boolean includeUnprocessedSplits)
                 {
                     throw new UnsupportedOperationException();
                 }

@@ -819,18 +819,6 @@ public class TaskContext
                 .findSingle();
     }
 
-    public LongSet getCompletedSplitSequenceIds()
-    {
-        LongSet list = LongArraySet.of();
-        list.addAll(completedSplitSequenceIds);
-        return list;
-    }
-
-    public void addCompletedSplit(Long splitSequenceId)
-    {
-        completedSplitSequenceIds.add(splitSequenceId);
-    }
-
     public void updateHostShutdownStats(TaskShutdownStats hostShutdownStats)
     {
         if (hostShutdownStats.getQueuedLeafSplitsAtShutdownStart().isPresent()) {

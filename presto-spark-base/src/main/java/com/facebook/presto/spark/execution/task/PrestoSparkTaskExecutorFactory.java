@@ -932,6 +932,7 @@ public class PrestoSparkTaskExecutorFactory
                     taskStats.getQueuedPartitionedSplitsWeight(),
                     taskStats.getRunningPartitionedSplitsWeight(),
                     0L,
+                    ImmutableList.of(),
                     false);
 
             OutputBufferInfo outputBufferInfo = new OutputBufferInfo(

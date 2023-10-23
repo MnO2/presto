@@ -148,7 +148,6 @@ public class TestThriftTaskStatus
         assertEquals(taskStatus.getState(), TaskState.RUNNING);
         assertEquals(taskStatus.getSelf(), SELF_URI);
         assertEquals(taskStatus.getCompletedDriverGroups(), LIFESPANS);
-        assertEquals(taskStatus.getCompletedSplitSequenceIds(), COMPLETED_SPLIT_SEQUENCE_IDS);
         assertEquals(taskStatus.getQueuedPartitionedDrivers(), QUEUED_PARTITIONED_DRIVERS);
         assertEquals(taskStatus.getQueuedPartitionedSplitsWeight(), QUEUED_PARTITIONED_WEIGHT);
         assertEquals(taskStatus.getRunningPartitionedDrivers(), RUNNING_PARTITIONED_DRIVERS);
@@ -212,7 +211,6 @@ public class TestThriftTaskStatus
                 RUNNING,
                 SELF_URI,
                 LIFESPANS,
-                COMPLETED_SPLIT_SEQUENCE_IDS,
                 executionFailureInfos,
                 QUEUED_PARTITIONED_DRIVERS,
                 RUNNING_PARTITIONED_DRIVERS,
@@ -229,6 +227,7 @@ public class TestThriftTaskStatus
                 QUEUED_PARTITIONED_WEIGHT,
                 RUNNING_PARTITIONED_WEIGHT,
                 0L,
+                ImmutableList.of(),
                 false);
     }
 

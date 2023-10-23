@@ -285,7 +285,7 @@ public class MockRemoteTaskFactory
                             state,
                             location,
                             ImmutableSet.of(),
-                            LongSet.of(), failures,
+                            failures,
                             0,
                             0,
                             0.0,
@@ -301,6 +301,7 @@ public class MockRemoteTaskFactory
                             0L,
                             0L,
                             0L,
+                            ImmutableList.of(),
                             isTaskIdling),
                     DateTime.now(),
                     outputBuffer.getInfo(),
@@ -330,7 +331,7 @@ public class MockRemoteTaskFactory
                     taskStateMachine.getState(),
                     location,
                     ImmutableSet.of(),
-                    LongSet.of(), ImmutableList.of(),
+                    ImmutableList.of(),
                     queuedSplitsInfo.getCount(),
                     combinedSplitsInfo.getCount() - queuedSplitsInfo.getCount(),
                     0.0,
@@ -347,6 +348,7 @@ public class MockRemoteTaskFactory
                     queuedSplitsInfo.getWeightSum(),
                     combinedSplitsInfo.getWeightSum() - queuedSplitsInfo.getWeightSum(),
                     0L,
+                    ImmutableList.of(),
                     isTaskIdling);
         }
 
@@ -428,11 +430,6 @@ public class MockRemoteTaskFactory
         public synchronized void setIsRetried()
         {
             isRetriedOnFailure = true;
-        }
-
-        @Override
-        public synchronized void updateUnprocessedSplits(TaskStatus taskStatus)
-        {
         }
 
         public synchronized boolean isRetried()

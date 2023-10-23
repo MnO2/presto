@@ -572,7 +572,7 @@ public class TestHttpRemoteTask
                     taskState,
                     initialTaskStatus.getSelf(),
                     ImmutableSet.of(),
-                    LongSet.of(), initialTaskStatus.getFailures(),
+                    initialTaskStatus.getFailures(),
                     initialTaskStatus.getQueuedPartitionedDrivers(),
                     initialTaskStatus.getRunningPartitionedDrivers(),
                     initialTaskStatus.getOutputBufferUtilization(),
@@ -588,6 +588,7 @@ public class TestHttpRemoteTask
                     initialTaskStatus.getQueuedPartitionedSplitsWeight(),
                     initialTaskStatus.getRunningPartitionedSplitsWeight(),
                     initialTaskStatus.getRetryableSplitCount(),
+                    initialTaskStatus.getUnprocessedSplits(),
                     initialTaskStatus.getIsTaskIdling());
         }
     }

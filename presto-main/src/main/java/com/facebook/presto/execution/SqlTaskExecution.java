@@ -458,12 +458,14 @@ public class SqlTaskExecution
                     }
 
                     // Enqueue driver runners with split lifecycle for this plan node and driver life cycle combination.
+                    ImmutableList.Builder<ScheduledSplit> scheduledSplits = ImmutableList.builder();
                     ImmutableList.Builder<DriverSplitRunner> runners = ImmutableList.builder();
                     for (ScheduledSplit scheduledSplit : pendingSplits.removeAllSplits()) {
                         // create a new driver for the split
                         runners.add(partitionedDriverRunnerFactory.createDriverRunner(scheduledSplit, lifespan));
+                        scheduledSplits.add(scheduledSplit);
                     }
-                    enqueueDriverSplitRunner(false, runners.build());
+                    enqueueDriverSplitRunner(scheduledSplits.build(), runners.build());
 
                     // If all driver runners have been enqueued for this plan node and driver life cycle combination,
                     // move on to the next plan node.
@@ -523,7 +525,7 @@ public class SqlTaskExecution
                 runners.add(driverRunnerFactory.createDriverRunner(null, Lifespan.taskWide()));
             }
         }
-        enqueueDriverSplitRunner(true, runners);
+        enqueueDriverSplitRunner(ImmutableList.of(), runners);
         for (DriverSplitRunnerFactory driverRunnerFactory : driverRunnerFactoriesWithTaskLifeCycle) {
             driverRunnerFactory.noMoreDriverRunner(ImmutableList.of(Lifespan.taskWide()));
             verify(driverRunnerFactory.isNoMoreDriverRunner());
@@ -545,16 +547,23 @@ public class SqlTaskExecution
                 runners.add(driverSplitRunnerFactory.createDriverRunner(null, lifespan));
             }
         }
-        enqueueDriverSplitRunner(true, runners);
+        enqueueDriverSplitRunner(ImmutableList.of(), runners);
         for (DriverSplitRunnerFactory driverRunnerFactory : driverRunnerFactoriesWithDriverGroupLifeCycle) {
             driverRunnerFactory.noMoreDriverRunner(ImmutableList.of(lifespan));
         }
     }
 
-    private synchronized void enqueueDriverSplitRunner(boolean forceRunSplit, List<DriverSplitRunner> runners)
+    private synchronized void enqueueDriverSplitRunner(List<ScheduledSplit> scheduledSplits, List<DriverSplitRunner> runners)
     {
         // schedule driver to be executed
-        List<ListenableFuture<Long>> finishedFutures = taskExecutor.enqueueSplits(taskHandle, forceRunSplit, runners);
+        List<ListenableFuture<Long>> finishedFutures;
+
+        if (scheduledSplits.isEmpty()) {
+            finishedFutures = taskExecutor.enqueueIntermediateSplits(taskHandle, runners);
+        }
+        else {
+            finishedFutures = taskExecutor.enqueueLeafSplits(taskHandle, runners, scheduledSplits);
+        }
         checkState(finishedFutures.size() == runners.size(), "Expected %s futures but got %s", runners.size(), finishedFutures.size());
 
         // when driver completes, update state and fire events
@@ -578,7 +587,6 @@ public class SqlTaskExecution
 
                         if (result != null) {
                             log.warn("Marking split %s as completed for task %s", result, taskId);
-                            taskContext.addCompletedSplit(result);
                             splitMonitor.splitCompletedEvent(taskId, getDriverStats(), result);
                         }
                         else {
@@ -619,6 +627,16 @@ public class SqlTaskExecution
         }
     }
 
+    public List<ScheduledSplit> getUnprocessedSplits()
+    {
+        return taskHandle.getUnprocessedSplits();
+    }
+
+    public boolean isTaskIdling()
+    {
+        return taskHandle.isTaskIdling();
+    }
+
     public synchronized Set<PlanNodeId> getNoMoreSplits()
     {
         ImmutableSet.Builder<PlanNodeId> noMoreSplits = ImmutableSet.builder();
@@ -633,11 +651,6 @@ public class SqlTaskExecution
             }
         }
         return noMoreSplits.build();
-    }
-
-    public boolean isTaskIdling()
-    {
-        return taskHandle.isTaskIdling();
     }
 
     private synchronized void checkTaskCompletion()

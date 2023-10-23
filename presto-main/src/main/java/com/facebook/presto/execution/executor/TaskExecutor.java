@@ -19,6 +19,7 @@ import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.stats.CounterStat;
 import com.facebook.airlift.stats.TimeDistribution;
 import com.facebook.airlift.stats.TimeStat;
+import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitRunner;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskManagerConfig;
@@ -663,7 +664,46 @@ public class TaskExecutor
         log.debug("Task finished or failed %s", taskHandle.getTaskId());
     }
 
-    public List<ListenableFuture<Long>> enqueueSplits(TaskHandle taskHandle, boolean intermediate, List<? extends SplitRunner> taskSplits)
+    public List<ListenableFuture<Long>> enqueueLeafSplits(TaskHandle taskHandle, List<? extends SplitRunner> taskSplits, List<ScheduledSplit> scheduledSplits)
+    {
+        checkState(taskSplits.size() == scheduledSplits.size());
+
+        List<PrioritizedSplitRunner> splitsToDestroy = new ArrayList<>();
+        List<ListenableFuture<Long>> finishedFutures = new ArrayList<>(taskSplits.size());
+        synchronized (this) {
+            for (int i = 0; i < taskSplits.size(); i += 1) {
+                SplitRunner taskSplit = taskSplits.get(i);
+                ScheduledSplit scheduledSplit = scheduledSplits.get(i);
+                PrioritizedSplitRunner prioritizedSplitRunner = new PrioritizedSplitRunner(
+                        taskHandle,
+                        taskSplit,
+                        ticker,
+                        globalCpuTimeMicros,
+                        globalScheduledTimeMicros,
+                        blockedQuantaWallTime,
+                        unblockedQuantaWallTime);
+
+                // add this to the work queue for the task
+                if (taskHandle.enqueueLeafSplit(prioritizedSplitRunner, scheduledSplit)) {
+                    // if task is under the limit for guaranteed splits, start one
+                    scheduleTaskIfNecessary(taskHandle);
+                    // if globally we have more resources, start more
+                    addNewEntrants();
+                }
+                else {
+                    splitsToDestroy.add(prioritizedSplitRunner);
+                }
+
+                finishedFutures.add(prioritizedSplitRunner.getFinishedFuture());
+            }
+        }
+        for (PrioritizedSplitRunner split : splitsToDestroy) {
+            split.destroy();
+        }
+        return finishedFutures;
+    }
+
+    public List<ListenableFuture<Long>> enqueueIntermediateSplits(TaskHandle taskHandle, List<? extends SplitRunner> taskSplits)
     {
         List<PrioritizedSplitRunner> splitsToDestroy = new ArrayList<>();
         List<ListenableFuture<Long>> finishedFutures = new ArrayList<>(taskSplits.size());
@@ -681,28 +721,14 @@ public class TaskExecutor
                     log.warn("Adding split %s to pending split tracker for task %s", taskSplit.getScheduledSplit().getSequenceId(), taskHandle.getTaskId());
                     gracefulShutdownSplitTracker.getPendingSplits().computeIfAbsent(taskHandle.getTaskId(), k -> ConcurrentHashMap.newKeySet()).add(taskSplit.getScheduledSplit().getSequenceId());
                 }
-                if (intermediate) {
-                    // add the runner to the handle so it can be destroyed if the task is canceled
-                    if (taskHandle.recordIntermediateSplit(prioritizedSplitRunner)) {
-                        // Note: we do not record queued time for intermediate splits
-                        startIntermediateSplit(prioritizedSplitRunner);
-                    }
-                    else {
-                        splitsToDestroy.add(prioritizedSplitRunner);
-                    }
+
+                if (taskHandle.recordIntermediateSplit(prioritizedSplitRunner)) {
+                    // Note: we do not record queued time for intermediate splits
+                    startIntermediateSplit(prioritizedSplitRunner);
                 }
                 else {
-                    // add this to the work queue for the task
-                    if (taskHandle.enqueueSplit(prioritizedSplitRunner)) {
-                        // if task is under the limit for guaranteed splits, start one
-                        scheduleTaskIfNecessary(taskHandle);
-                        // if globally we have more resources, start more
-                        addNewEntrants();
-                    }
-                    else {
-                        //FIXME check if this can cause correctness issue
-                        splitsToDestroy.add(prioritizedSplitRunner);
-                    }
+                    //FIXME check if this can cause correctness issue
+                    splitsToDestroy.add(prioritizedSplitRunner);
                 }
 
                 finishedFutures.add(prioritizedSplitRunner.getFinishedFuture());

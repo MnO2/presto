@@ -363,8 +363,6 @@ public class SectionExecutionFactory
                     Collections.shuffle(activeRemoteTasks);
 
                     synchronized (stageExecution) {
-                        checkState(taskToRecover.isTheOnlyPlanNode(planNodeId),
-                                "Unexpected plan node id");
                         Collection<ScheduledSplit> allUnprocessedSplits = taskToRecover.getAllUnprocessedSplits(planNodeId);
                         Iterator<List<ScheduledSplit>> splits = Iterables.partition(allUnprocessedSplits,
                                 SPLIT_RETRY_BATCH_SIZE).iterator();
