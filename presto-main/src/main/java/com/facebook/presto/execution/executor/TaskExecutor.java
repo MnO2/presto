@@ -278,7 +278,7 @@ public class TaskExecutor
                                             .build());
 
                             while (!taskHandle.isTotalRunningSplitEmpty()) {
-                                checkState(taskHandle.isTaskDone(), "Task is done while waiting for total running split empty");
+                                checkState(!taskHandle.isTaskDone(), "Task is done while waiting for total running split empty");
                                 try {
                                     TaskShutdownStats waitingForSplitStats = builderWithOutputBufferInfo(SPLIT_WAIT, shuttingdownNode, outputBuffer)
                                             .setPendingRunningSplitState(SPLIT_WAIT, System.nanoTime() - startTime)
