@@ -53,6 +53,8 @@ public interface RemoteTask
 
     boolean isTaskIdling();
 
+    boolean anyPendingSplitProcessed();
+
     ListenableFuture<?> removeRemoteSource(TaskId remoteSourceTaskId);
 
     /**

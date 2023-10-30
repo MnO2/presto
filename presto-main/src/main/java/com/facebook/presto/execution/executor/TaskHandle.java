@@ -62,6 +62,7 @@ public class TaskHandle
     private final Optional<TaskShutDownListener> hostShutDownListener;
     private final Optional<OutputBuffer> outputBuffer;
     private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+    private AtomicBoolean anySplitProcessed = new AtomicBoolean(false);
 
     public TaskHandle(
             TaskId taskId,
@@ -187,9 +188,9 @@ public class TaskHandle
         return priorityTracker.getScheduledNanos();
     }
 
-    public boolean isTaskIdling()
+    public synchronized boolean isTaskIdling()
     {
-        return runningLeafSplits.isEmpty() && runningIntermediateSplits.isEmpty() && queuedLeafSplits.isEmpty();
+        return runningLeafSplits.isEmpty() && runningIntermediateSplits.isEmpty() && queuedLeafSplits.isEmpty() && anySplitProcessed.get();
     }
 
     public synchronized PrioritizedSplitRunner pollNextSplit()
@@ -263,6 +264,7 @@ public class TaskHandle
         concurrencyController.splitFinished(split.getScheduledNanos(), utilizationSupplier.getAsDouble(), runningLeafSplits.size());
         runningIntermediateSplits.remove(split);
         runningLeafSplits.remove(split);
+        anySplitProcessed.set(true);
     }
 
     public int getNextSplitId()

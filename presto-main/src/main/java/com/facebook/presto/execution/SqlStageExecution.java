@@ -752,6 +752,10 @@ public final class SqlStageExecution
     public synchronized boolean noMoreRetry()
     {
         checkState(planFragment.isLeaf());
+//        boolean anyPendingSplitProcessed = getAllTasks().stream().anyMatch(RemoteTask::anyPendingSplitProcessed);
+//        if (!anyPendingSplitProcessed) {
+//            return false;
+//        }
 
         if (failedTasks.isEmpty()) {
             checkState(finishedTasks.isEmpty());

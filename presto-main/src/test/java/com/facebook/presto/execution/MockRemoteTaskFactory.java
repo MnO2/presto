@@ -441,6 +441,11 @@ public class MockRemoteTaskFactory
             return getTaskStatus().getIsTaskIdling();
         }
 
+        public boolean anyPendingSplitProcessed()
+        {
+            return false;
+        }
+
         @Override
         public void start()
         {

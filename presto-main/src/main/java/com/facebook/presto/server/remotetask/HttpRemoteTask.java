@@ -224,6 +224,7 @@ public final class HttpRemoteTask
     private final TableWriteInfo tableWriteInfo;
 
     private final DecayCounter taskUpdateRequestSize;
+    private AtomicBoolean anyPendingSplitProcessed = new AtomicBoolean(false);
 
     private Optional<TaskStatus> lastTaskStatus = Optional.empty();
 
@@ -751,6 +752,11 @@ public final class HttpRemoteTask
         }
     }
 
+    public boolean anyPendingSplitProcessed()
+    {
+        return anyPendingSplitProcessed.get();
+    }
+
     private synchronized void processTaskUpdate(TaskInfo newValue, List<TaskSource> sources)
     {
         //Setting the flag as false since TaskUpdateRequest is not on thrift yet.
@@ -767,6 +773,7 @@ public final class HttpRemoteTask
                 if (pendingSplits.remove(planNodeId, split)) {
                     if (isTableScanSource) {
                         removed++;
+                        anyPendingSplitProcessed.set(true);
                         removedWeight = addExact(removedWeight, split.getSplit().getSplitWeight().getRawValue());
                     }
                 }
