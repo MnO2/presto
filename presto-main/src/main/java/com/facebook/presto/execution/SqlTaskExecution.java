@@ -63,6 +63,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.SystemSessionProperties.getInitialSplitsPerNode;
@@ -290,6 +291,11 @@ public class SqlTaskExecution
     public TaskContext getTaskContext()
     {
         return taskContext;
+    }
+
+    public AtomicBoolean getNoTaskAtGracefulShutdown()
+    {
+        return taskExecutor.getNoTaskAtGracefulShutdown();
     }
 
     public void addSources(List<TaskSource> sources)

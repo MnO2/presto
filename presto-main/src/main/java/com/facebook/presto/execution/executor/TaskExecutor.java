@@ -66,6 +66,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.function.DoubleSupplier;
@@ -200,6 +201,8 @@ public class TaskExecutor
     private final GracefulShutdownSplitTracker gracefulShutdownSplitTracker;
 
     private volatile boolean lowMemory;
+    private AtomicInteger pendingUpdateTasks = new AtomicInteger(0);
+    private AtomicBoolean noTaskAtGracefulShutdown = new AtomicBoolean(false);
 
     @Inject
     public TaskExecutor(TaskManagerConfig config, EmbedVersion embedVersion, MultilevelSplitQueue splitQueue, GracefulShutdownSplitTracker gracefulShutdownSplitTracker)
@@ -221,22 +224,48 @@ public class TaskExecutor
     public void gracefulShutdown()
     {
         isGracefulShutdownStarted.set(true);
+        waitForPendingTaskUpdated();
         long shutdownStartTime = System.nanoTime();
         //TODO throw error for new task creation instead of looping here.
         List<TaskHandle> activeTaskSnapshot = getActiveTasks();
-        while (activeTaskSnapshot.size() > 0) {
-            gracefulShutdown(activeTaskSnapshot);
-            activeTaskSnapshot = getActiveTasks();
+        if (activeTaskSnapshot.size() > 0) {
+            while (activeTaskSnapshot.size() > 0) {
+                gracefulShutdown(activeTaskSnapshot);
+                activeTaskSnapshot = getActiveTasks();
+            }
+            Duration shutdownTime = Duration.nanosSince(shutdownStartTime);
+            log.info("Waiting for shutdown of all tasks over in %s milli sec", shutdownTime.toMillis());
+            taskExecutorShutdownTime.add(shutdownTime);
+            isGracefulShutdownFinished.set(true);
         }
-        Duration shutdownTime = Duration.nanosSince(shutdownStartTime);
-        log.info("Waiting for shutdown of all tasks over in %s milli sec", shutdownTime.toMillis());
-        taskExecutorShutdownTime.add(shutdownTime);
-        isGracefulShutdownFinished.set(true);
+        else {
+            log.info("No active task, make any taskstatus call to return HostShutdown to make sure it triggers callback on the coordinator");
+            noTaskAtGracefulShutdown.set(true);
+        }
+    }
+
+    public AtomicBoolean getNoTaskAtGracefulShutdown()
+    {
+        return noTaskAtGracefulShutdown;
     }
 
     private synchronized ImmutableList<TaskHandle> getActiveTasks()
     {
         return tasks.stream().filter(taskHandle -> !taskHandle.isDestroyed() && !taskHandle.isShutdownInProgress()).collect(toImmutableList());
+    }
+
+    public void waitForPendingTaskUpdated()
+    {
+        long waitTimeMillis = 5;
+        try {
+            // wait for the updateTask to update the queuedLeafSplits
+            while (pendingUpdateTasks.get() > 0) {
+                Thread.sleep(waitTimeMillis);
+            }
+        }
+        catch (InterruptedException ex) {
+            log.error(ex, "GracefulShutdown got interrupted while waiting for pendingUpdateTasks turning to 0");
+        }
     }
 
     private void gracefulShutdown(List<TaskHandle> currentTasksSnapshot)
