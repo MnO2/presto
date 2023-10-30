@@ -586,5 +586,10 @@ public class MockRemoteTaskFactory
         {
             return unacknowledgedSplits;
         }
+
+        @Override
+        public void updateLastTaskStatus(TaskStatus taskStatus)
+        {
+        }
     }
 }

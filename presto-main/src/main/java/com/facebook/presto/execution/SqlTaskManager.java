@@ -291,7 +291,7 @@ public class SqlTaskManager
     {
         boolean taskCanceled = false;
         for (SqlTask task : tasks.asMap().values()) {
-            if (task.getTaskStatus(false).getState().isDone()) {
+            if (task.getTaskStatus().getState().isDone()) {
                 continue;
             }
             task.failed(new PrestoException(SERVER_SHUTTING_DOWN, format("Server is shutting down. Task %s has been canceled", task.getTaskId())));
@@ -356,13 +356,13 @@ public class SqlTaskManager
     }
 
     @Override
-    public TaskStatus getTaskStatus(TaskId taskId, boolean includeUnprocessedSplits)
+    public TaskStatus getTaskStatus(TaskId taskId)
     {
         requireNonNull(taskId, "taskId is null");
 
         SqlTask sqlTask = tasks.getUnchecked(taskId);
         sqlTask.recordHeartbeat();
-        return sqlTask.getTaskStatus(includeUnprocessedSplits);
+        return sqlTask.getTaskStatus();
     }
 
     @Override
@@ -385,14 +385,14 @@ public class SqlTaskManager
     }
 
     @Override
-    public ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState, boolean includeUnprocessedSplits)
+    public ListenableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState)
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(currentState, "currentState is null");
 
         SqlTask sqlTask = tasks.getUnchecked(taskId);
         sqlTask.recordHeartbeat();
-        return sqlTask.getTaskStatus(currentState, includeUnprocessedSplits);
+        return sqlTask.getTaskStatus(currentState);
     }
 
     @Override

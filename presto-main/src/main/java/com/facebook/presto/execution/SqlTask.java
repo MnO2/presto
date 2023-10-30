@@ -256,14 +256,14 @@ public class SqlTask
         }
     }
 
-    public TaskStatus getTaskStatus(boolean includeUnprocessedSplits)
+    public TaskStatus getTaskStatus()
     {
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskId)) {
-            return createTaskStatus(taskHolderReference.get(), includeUnprocessedSplits);
+            return createTaskStatus(taskHolderReference.get());
         }
     }
 
-    private TaskStatus createTaskStatus(TaskHolder taskHolder, boolean includeUnprocessedSplits)
+    private TaskStatus createTaskStatus(TaskHolder taskHolder)
     {
         long taskStatusAgeInMillis = System.currentTimeMillis() - creationTimeInMillis;
         // Always return a new TaskInfo with a larger version number;
@@ -304,8 +304,8 @@ public class SqlTask
             fullGcTimeInMillis = taskStats.getFullGcTimeInMillis();
             totalCpuTimeInNanos = taskStats.getTotalCpuTimeInNanos();
             retryableSplitCount = taskStats.getRetryableSplitCount();
-            unprocessedSplits = taskHolder.getTaskExecution().getUnprocessedSplits();
-            isTaskIdling = taskHolder.getTaskExecution().isTaskIdling();
+            unprocessedSplits = taskHolder.getFinalTaskInfo().getTaskStatus().getUnprocessedSplits();
+            isTaskIdling = taskHolder.getFinalTaskInfo().getTaskStatus().getIsTaskIdling();
         }
         else if (taskHolder.getTaskExecution() != null) {
             long physicalWrittenBytes = 0;
@@ -408,7 +408,7 @@ public class SqlTask
         Set<PlanNodeId> noMoreSplits = getNoMoreSplits(taskHolder);
         MetadataUpdates metadataRequests = getMetadataUpdateRequests(taskHolder);
 
-        TaskStatus taskStatus = createTaskStatus(taskHolder, false);
+        TaskStatus taskStatus = createTaskStatus(taskHolder);
         return new TaskInfo(
                 taskStateMachine.getTaskId(),
                 taskStatus,
@@ -421,16 +421,16 @@ public class SqlTask
                 nodeId);
     }
 
-    public ListenableFuture<TaskStatus> getTaskStatus(TaskState callersCurrentState, boolean includeUnprocessedSplits)
+    public ListenableFuture<TaskStatus> getTaskStatus(TaskState callersCurrentState)
     {
         requireNonNull(callersCurrentState, "callersCurrentState is null");
 
         if (callersCurrentState.isDone()) {
-            return immediateFuture(getTaskStatus(includeUnprocessedSplits));
+            return immediateFuture(getTaskStatus());
         }
 
         ListenableFuture<TaskState> futureTaskState = taskStateMachine.getStateChange(callersCurrentState);
-        return Futures.transform(futureTaskState, input -> getTaskStatus(includeUnprocessedSplits), directExecutor());
+        return Futures.transform(futureTaskState, input -> getTaskStatus(), directExecutor());
     }
 
     public ListenableFuture<TaskInfo> getTaskInfo(TaskState callersCurrentState)

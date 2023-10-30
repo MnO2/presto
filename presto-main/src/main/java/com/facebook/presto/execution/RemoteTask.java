@@ -81,4 +81,6 @@ public interface RemoteTask
     PartitionedSplitsInfo getQueuedPartitionedSplitsInfo();
 
     int getUnacknowledgedPartitionedSplitCount();
+
+    void updateLastTaskStatus(TaskStatus taskStatus);
 }
