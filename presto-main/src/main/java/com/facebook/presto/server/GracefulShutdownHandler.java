@@ -38,6 +38,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.facebook.airlift.concurrent.Threads.threadsNamed;
 import static com.facebook.presto.spi.NodePoolType.LEAF;
@@ -212,6 +213,11 @@ public class GracefulShutdownHandler
 
             activeTasks = getActiveTasks();
         }
+    }
+
+    public AtomicBoolean getNoTaskAtGracefulShutdown()
+    {
+        return taskExecutor.getNoTaskAtGracefulShutdown();
     }
 
     private List<TaskInfo> getActiveTasks()
