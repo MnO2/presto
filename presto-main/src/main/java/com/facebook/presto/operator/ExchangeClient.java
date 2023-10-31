@@ -54,6 +54,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static com.facebook.presto.common.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.UNRECOVERABLE_HOST_SHUTTING_DOWN;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.throwIfUnchecked;
@@ -474,6 +475,13 @@ public class ExchangeClient
         if (!queuedClients.contains(client)) {
             queuedClients.add(client);
         }
+
+        if (allClients.values().stream().allMatch(PageBufferClient::isServerGracefulShutdown)) {
+            String errorMessage = String.format("all of the upstream tasks are graceful shutdown, unable to recover the query");
+            failure.compareAndSet(null, new PrestoException(UNRECOVERABLE_HOST_SHUTTING_DOWN, errorMessage));
+            throwIfFailed();
+        }
+
         scheduleRequestIfNecessary();
     }
 

@@ -78,6 +78,7 @@ import static com.facebook.presto.PrestoMediaTypes.APPLICATION_JACKSON_SMILE;
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_CURRENT_STATE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_GRACEFUL_SHUTDOWN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_SIZE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_WAIT;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_NEXT_TOKEN;
@@ -358,6 +359,7 @@ public class TaskResource
                         .header(PRESTO_PAGE_TOKEN, result.getToken())
                         .header(PRESTO_PAGE_NEXT_TOKEN, result.getNextToken())
                         .header(PRESTO_BUFFER_COMPLETE, true)
+                        .header(PRESTO_GRACEFUL_SHUTDOWN, shutdownHandler.isShutdownRequested())
                         .build();
             }, directExecutor());
 
@@ -402,6 +404,7 @@ public class TaskResource
                     .header(PRESTO_PAGE_TOKEN, result.getToken())
                     .header(PRESTO_PAGE_NEXT_TOKEN, result.getNextToken())
                     .header(PRESTO_BUFFER_COMPLETE, result.isBufferComplete())
+                    .header(PRESTO_GRACEFUL_SHUTDOWN, shutdownHandler.isShutdownRequested())
                     .build();
         }, directExecutor());
 
@@ -414,6 +417,7 @@ public class TaskResource
                                 .header(PRESTO_PAGE_TOKEN, token)
                                 .header(PRESTO_PAGE_NEXT_TOKEN, token)
                                 .header(PRESTO_BUFFER_COMPLETE, false)
+                                .header(PRESTO_GRACEFUL_SHUTDOWN, shutdownHandler.isShutdownRequested())
                                 .build());
 
         responseFuture.addListener(() -> readFromOutputBufferTime.add(Duration.nanosSince(start)), directExecutor());
