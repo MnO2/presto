@@ -996,7 +996,6 @@ public final class HttpRemoteTask
         checkState(getTaskStatus().getState().isDone(), "attempt to clean up a task that is not done yet");
 
         // clear pending splits to free memory
-        pendingSplits.clear();
         pendingSourceSplitCount = 0;
         pendingSourceSplitsWeight = 0;
         updateTaskStats();
@@ -1020,6 +1019,7 @@ public final class HttpRemoteTask
             taskInfoFetcher.updateTaskInfo(getTaskInfo().withTaskStatus(getTaskStatus()));
         }
         else {
+            pendingSplits.clear();
             // The remote task is likely to get a delete from the PageBufferClient first.
             // We send an additional delete anyway to get the final TaskInfo
             HttpUriBuilder uriBuilder = getHttpUriBuilder(getTaskStatus());
@@ -1209,7 +1209,9 @@ public final class HttpRemoteTask
                     failTask(e);
                 }
                 finally {
-                    sendUpdate();
+                    if (!(cause instanceof ServiceGoneException)) {
+                        sendUpdate();
+                    }
                 }
             }
         }

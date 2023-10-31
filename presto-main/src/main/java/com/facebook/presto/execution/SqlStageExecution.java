@@ -682,6 +682,8 @@ public final class SqlStageExecution
             if (isFailedTasksBelowThreshold()) {
                 try {
                     stageTaskRecoveryCallback.get().recover(taskId);
+                    checkState(failedTask.getTaskStatus().getState() == TaskState.GRACEFUL_FAILED, "TaskStatus in the HttpRemoteTask not yet updated");
+                    checkState(failedTask.getTaskStatus().getUnprocessedSplits().size() == taskStatus.getUnprocessedSplits().size(), "unprocessed splits doesn't match");
                     failedTask.setIsRetried();
 
                     finishedTasks.add(taskId);
