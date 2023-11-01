@@ -134,6 +134,12 @@ public class PrioritizedSplitRunner
         return start.get();
     }
 
+    public long getWallTimeFromStartInMillis()
+    {
+        long endNanos = ticker.read();
+        return (endNanos - start.get()) / 1000;
+    }
+
     public boolean isFinished()
     {
         boolean finished = split.isFinished();

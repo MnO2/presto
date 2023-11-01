@@ -265,7 +265,7 @@ public class TestHttpRemoteTask
                 createInitialEmptyOutputBuffers(OutputBuffers.BufferType.BROADCAST),
                 new NodeTaskMap.NodeStatsTracker(i -> {}, i -> {}, (age, i) -> {}),
                 true,
-                new TableWriteInfo(Optional.empty(), Optional.empty(), Optional.empty()));
+                new TableWriteInfo(Optional.empty(), Optional.empty(), Optional.empty()), t -> {});
     }
 
     private static HttpRemoteTaskFactory createHttpRemoteTaskFactory(TestingTaskResource testingTaskResource, boolean useThriftEncoding)
@@ -586,7 +586,8 @@ public class TestHttpRemoteTask
                     initialTaskStatus.getRunningPartitionedSplitsWeight(),
                     initialTaskStatus.getRetryableSplitCount(),
                     initialTaskStatus.getUnprocessedSplits(),
-                    initialTaskStatus.getIsTaskIdling());
+                    initialTaskStatus.getIsTaskIdling(),
+                    initialTaskStatus.getAverageSplitExecutionWallTimeInMillis());
         }
     }
 }

@@ -149,7 +149,7 @@ public final class SqlStageExecution
 
     private boolean isRetryOfFailedSplitsEnabled;
 
-    private SettableFuture<?> whenNoMoreRetry = SettableFuture.create();
+    private SettableFuture<?> whenAllSplitsAcknowledged = SettableFuture.create();
 
     @GuardedBy("this")
     private Optional<StageTaskRecoveryCallback> stageTaskRecoveryCallback = Optional.empty();
@@ -327,7 +327,7 @@ public final class SqlStageExecution
             }
 
             log.info("QueryId = %s, schedulingCompleteIfRetryingSplits is called and transition to SCHEDULED", getStageExecutionId().getStageId().getQueryId());
-            if (noMoreRetry()) {
+            if (checkAllPendingSplitsAcknowledged()) {
                 for (PlanNodeId tableScanPlanNodeId : planFragment.getTableScanSchedulingOrder()) {
                     schedulingComplete(tableScanPlanNodeId);
                 }
@@ -604,7 +604,16 @@ public final class SqlStageExecution
                 outputBuffers,
                 nodeTaskMap.createTaskStatsTracker(node, taskId),
                 summarizeTaskInfo,
-                tableWriteInfo);
+                tableWriteInfo,
+                t -> {
+                    StageExecutionState stageExecutionState = getState();
+                    if (isRetryOfFailedSplitsEnabled && planFragment.isLeaf() && stageExecutionState == StageExecutionState.SCHEDULING_RETRIED_SPLITS) {
+                        if (!isFailedTasksBelowThreshold() || checkAllPendingSplitsAcknowledged()) {
+                            log.info("QueryId = %s, whenNoMoreRetry is triggered.", taskId.getQueryId());
+                            whenAllSplitsAcknowledged.set(null);
+                        }
+                    }
+                });
 
         completeSources.forEach(task::noMoreSplits);
 
@@ -722,10 +731,9 @@ public final class SqlStageExecution
         // The finishedTasks.add(taskStatus.getTaskId()) must happen before the getState() (see schedulingComplete)
         stageExecutionState = getState();
         if (isRetryOfFailedSplitsEnabled && planFragment.isLeaf() && stageExecutionState == StageExecutionState.SCHEDULING_RETRIED_SPLITS) {
-            if (!isFailedTasksBelowThreshold() || noMoreRetry()) {
+            if (checkAllPendingSplitsAcknowledged()) {
                 log.info("QueryId = %s, whenNoMoreRetry is triggered.", taskId.getQueryId());
-                whenNoMoreRetry.set(null);
-                return;
+                whenAllSplitsAcknowledged.set(null);
             }
         }
 
@@ -742,16 +750,16 @@ public final class SqlStageExecution
 
     public ListenableFuture<?> getBlocked()
     {
-        return whenNoMoreRetry;
+        return whenAllSplitsAcknowledged;
     }
 
     @VisibleForTesting
     public void triggerWhenNoMoreRetryForTest()
     {
-        whenNoMoreRetry.set(null);
+        whenAllSplitsAcknowledged.set(null);
     }
 
-    public synchronized boolean noMoreRetry()
+    public synchronized boolean checkAllPendingSplitsAcknowledged()
     {
         checkState(planFragment.isLeaf());
 //        boolean anyPendingSplitProcessed = getAllTasks().stream().anyMatch(RemoteTask::anyPendingSplitProcessed);
@@ -761,22 +769,22 @@ public final class SqlStageExecution
 
         if (failedTasks.isEmpty()) {
             checkState(finishedTasks.isEmpty());
-            List<RemoteTask> idleRunningHttpRemoteTasks = getAllTasks().stream()
+            List<RemoteTask> noPendingSplitsHttpRemoteTasks = getAllTasks().stream()
                     .filter(task -> task.getTaskStatus().getState() == TaskState.RUNNING)
-                    .filter(task -> task.isTaskIdling())
+                    .filter(task -> task.getUnacknowledgedPartitionedSplitCount() == 0)
                     .collect(toList());
-            boolean result = idleRunningHttpRemoteTasks.size() == allTasks.size();
+            boolean result = noPendingSplitsHttpRemoteTasks.size() == allTasks.size();
 
             if (result) {
-                log.info("QueryId = %s, noMoreRetry in failedTasks empty branch. idleRunningHttpRemoteTasks = %s, allTasks = %s", getStageExecutionId().getStageId().getQueryId(), idleRunningHttpRemoteTasks.size(), allTasks.size());
+                log.info("QueryId = %s, noMoreRetry in failedTasks empty branch. idleRunningHttpRemoteTasks = %s, allTasks = %s", getStageExecutionId().getStageId().getQueryId(), noPendingSplitsHttpRemoteTasks.size(), allTasks.size());
             }
             return result;
         }
 
-        return noMoreRetryWithFailedTasks();
+        return checkAllPendingSplitsAcknowledgedWithFailedTasks();
     }
 
-    private boolean noMoreRetryWithFailedTasks()
+    private boolean checkAllPendingSplitsAcknowledgedWithFailedTasks()
     {
         checkState(finishedTasks.size() != allTasks.size());
 
@@ -785,9 +793,9 @@ public final class SqlStageExecution
             return true;
         }
 
-        List<RemoteTask> idleRunningHttpRemoteTasks = getAllTasks().stream()
+        List<RemoteTask> noPendingSplitsHttpRemoteTasks = getAllTasks().stream()
                 .filter(task -> task.getTaskStatus().getState() == TaskState.RUNNING)
-                .filter(task -> task.isTaskIdling())
+                .filter(task -> task.getUnacknowledgedPartitionedSplitCount() == 0)
                 .collect(toList());
 
         long retriedFailedTaskCount = getAllTasks().stream()
@@ -795,16 +803,16 @@ public final class SqlStageExecution
                 .filter(RemoteTask::isRetried)
                 .count();
 
-        boolean isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks;
+        boolean isAllTasksNoPendingSplits;
         synchronized (this) {
-            isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks = (idleRunningHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && retriedFailedTaskCount == failedTasks.size());
+            isAllTasksNoPendingSplits = (noPendingSplitsHttpRemoteTasks.size() == allTasks.size() - failedTasks.size() && retriedFailedTaskCount == failedTasks.size());
         }
 
-        if (isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks) {
-            log.info("QueryId = %s, noMoreRetry in isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks. idleRunningHttpRemoteTasks = %s, allTasks = %s, failedTask = %s, retriedFailedTaskCount = %s", getStageExecutionId().getStageId().getQueryId(), idleRunningHttpRemoteTasks.size(), allTasks.size(), failedTasks.size(), retriedFailedTaskCount);
+        if (isAllTasksNoPendingSplits) {
+            log.info("QueryId = %s, noMoreRetry in isAllTasksNoPendingSplits. idleRunningHttpRemoteTasks = %s, allTasks = %s, failedTask = %s, retriedFailedTaskCount = %s", getStageExecutionId().getStageId().getQueryId(), noPendingSplitsHttpRemoteTasks.size(), allTasks.size(), failedTasks.size(), retriedFailedTaskCount);
         }
 
-        return isAllTasksEitherIdlingOrFailedTasksHaveBeenRetriedOrTooManyFailedTasks;
+        return isAllTasksNoPendingSplits;
     }
 
     private synchronized boolean isFailedTasksBelowThreshold()
@@ -928,7 +936,7 @@ public final class SqlStageExecution
         void recover(TaskId taskId);
     }
 
-    private static class ListenerManager<T>
+    public static class ListenerManager<T>
     {
         private final List<Consumer<T>> listeners = new ArrayList<>();
         private boolean frozen;

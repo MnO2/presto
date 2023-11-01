@@ -578,7 +578,7 @@ public class ExchangeClient
         }
     }
 
-    private static class ExponentialMovingAverage
+    public static class ExponentialMovingAverage
     {
         private final double alpha;
         private double oldValue;

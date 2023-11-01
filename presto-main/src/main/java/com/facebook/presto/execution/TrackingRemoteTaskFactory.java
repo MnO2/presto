@@ -24,6 +24,8 @@ import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.google.common.collect.Multimap;
 
+import java.util.function.Consumer;
+
 import static com.facebook.presto.execution.TaskState.PLANNED;
 import static com.facebook.presto.execution.TaskState.RUNNING;
 import static java.util.Objects.requireNonNull;
@@ -49,7 +51,8 @@ public class TrackingRemoteTaskFactory
             OutputBuffers outputBuffers,
             NodeStatsTracker nodeStatsTracker,
             boolean summarizeTaskInfo,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            Consumer<RemoteTask> splitAcknowledgementListener)
     {
         RemoteTask task = remoteTaskFactory.createRemoteTask(session,
                 taskId,
@@ -59,7 +62,8 @@ public class TrackingRemoteTaskFactory
                 outputBuffers,
                 nodeStatsTracker,
                 summarizeTaskInfo,
-                tableWriteInfo);
+                tableWriteInfo,
+                t -> {});
 
         task.addStateChangeListener(new UpdateQueryStats(stateMachine));
         return task;

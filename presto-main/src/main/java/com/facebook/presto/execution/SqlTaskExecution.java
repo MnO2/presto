@@ -636,6 +636,11 @@ public class SqlTaskExecution
         return taskHandle.isTaskIdling();
     }
 
+    public long getAverageSplitExecutionWallTimeInMillis()
+    {
+        return taskHandle.getAverageSplitExecutionWallTimeInMillis();
+    }
+
     public synchronized Set<PlanNodeId> getNoMoreSplits()
     {
         ImmutableSet.Builder<PlanNodeId> noMoreSplits = ImmutableSet.builder();

@@ -289,6 +289,7 @@ public class SqlTask
         long fullGcTimeInMillis = 0L;
         long totalCpuTimeInNanos = 0L;
         long retryableSplitCount = 0L;
+        long averageSplitExecutionWallTimeInMillis = 0L;
         List<ScheduledSplit> unprocessedSplits = ImmutableList.of();
         boolean isTaskIdling = false;
         if (taskHolder.getFinalTaskInfo() != null) {
@@ -306,6 +307,7 @@ public class SqlTask
             retryableSplitCount = taskStats.getRetryableSplitCount();
             unprocessedSplits = taskHolder.getFinalTaskInfo().getTaskStatus().getUnprocessedSplits();
             isTaskIdling = taskHolder.getFinalTaskInfo().getTaskStatus().getIsTaskIdling();
+            averageSplitExecutionWallTimeInMillis = taskHolder.getFinalTaskInfo().getTaskStatus().getAverageSplitExecutionWallTimeInMillis();
         }
         else if (taskHolder.getTaskExecution() != null) {
             long physicalWrittenBytes = 0;
@@ -328,6 +330,7 @@ public class SqlTask
             retryableSplitCount = taskContext.getRetryableSplitCount();
             unprocessedSplits = taskHolder.getTaskExecution().getUnprocessedSplits();
             isTaskIdling = taskHolder.getTaskExecution().isTaskIdling();
+            averageSplitExecutionWallTimeInMillis = taskHolder.getTaskExecution().getAverageSplitExecutionWallTimeInMillis();
         }
         return new TaskStatus(
                 taskInstanceId.getUuidLeastSignificantBits(),
@@ -353,7 +356,8 @@ public class SqlTask
                 runningPartitionedSplitsWeight,
                 retryableSplitCount,
                 unprocessedSplits,
-                isTaskIdling);
+                isTaskIdling,
+                averageSplitExecutionWallTimeInMillis);
     }
 
     private TaskStats getTaskStats(TaskHolder taskHolder)

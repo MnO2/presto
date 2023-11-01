@@ -166,7 +166,7 @@ public class SourcePartitionedScheduler
     {
         SourcePartitionedScheduler sourcePartitionedScheduler = new SourcePartitionedScheduler(stage, partitionedNode, splitSource, splitPlacementPolicy, splitBatchSize, false);
         sourcePartitionedScheduler.startLifespan(Lifespan.taskWide(), NOT_PARTITIONED);
-        return new SplitRetrySourcePartitionedScheduler(sourcePartitionedScheduler, stage);
+        return new SplitAcknowledgementSourcePartitionedScheduler(sourcePartitionedScheduler, stage);
     }
 
     /**

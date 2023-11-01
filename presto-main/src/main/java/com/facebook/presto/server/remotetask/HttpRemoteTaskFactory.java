@@ -58,6 +58,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.function.Consumer;
 
 import static com.facebook.airlift.concurrent.Threads.daemonThreadsNamed;
 import static java.lang.Math.toIntExact;
@@ -212,7 +213,8 @@ public class HttpRemoteTaskFactory
             OutputBuffers outputBuffers,
             NodeTaskMap.NodeStatsTracker nodeStatsTracker,
             boolean summarizeTaskInfo,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            Consumer<RemoteTask> splitAcknowledgementListener)
     {
         return new HttpRemoteTask(
                 session,
@@ -250,6 +252,7 @@ public class HttpRemoteTaskFactory
                 queryManager,
                 taskUpdateRequestSize,
                 handleResolver,
-                connectorTypeSerdeManager);
+                connectorTypeSerdeManager,
+                splitAcknowledgementListener);
     }
 }

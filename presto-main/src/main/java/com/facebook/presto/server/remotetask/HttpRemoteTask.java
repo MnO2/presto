@@ -37,6 +37,7 @@ import com.facebook.presto.execution.PartitionedSplitsInfo;
 import com.facebook.presto.execution.QueryManager;
 import com.facebook.presto.execution.RemoteTask;
 import com.facebook.presto.execution.ScheduledSplit;
+import com.facebook.presto.execution.SqlStageExecution;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskInfo;
@@ -99,6 +100,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static com.facebook.airlift.http.client.HttpStatus.NO_CONTENT;
@@ -227,6 +229,7 @@ public final class HttpRemoteTask
     private AtomicBoolean anyPendingSplitProcessed = new AtomicBoolean(false);
 
     private Optional<TaskStatus> lastTaskStatus = Optional.empty();
+    private final SqlStageExecution.ListenerManager<RemoteTask> splitAcknowledgementListeners = new SqlStageExecution.ListenerManager<>();
 
     public HttpRemoteTask(
             Session session,
@@ -264,7 +267,8 @@ public final class HttpRemoteTask
             QueryManager queryManager,
             DecayCounter taskUpdateRequestSize,
             HandleResolver handleResolver,
-            ConnectorTypeSerdeManager connectorTypeSerdeManager)
+            ConnectorTypeSerdeManager connectorTypeSerdeManager,
+            Consumer<RemoteTask> splitAcknowledgementListener)
     {
         requireNonNull(session, "session is null");
         requireNonNull(taskId, "taskId is null");
@@ -401,6 +405,7 @@ public final class HttpRemoteTask
                 }
             });
 
+            splitAcknowledgementListeners.addListener(splitAcknowledgementListener);
             updateTaskStats();
             updateSplitQueueSpace();
         }
@@ -622,6 +627,26 @@ public final class HttpRemoteTask
         return PartitionedSplitsInfo.forSplitCountAndWeightSum(count, weight);
     }
 
+    public int getEstimatedRightSizedQueuedSplits()
+    {
+        long averageSplitExecutionWallTimeInMillis = getTaskStatus().getAverageSplitExecutionWallTimeInMillis();
+        long amountOfWork = 30 * 1000;
+        int maxAllowedValue = maxUnacknowledgedSplits;
+
+        if (averageSplitExecutionWallTimeInMillis > 0) {
+            int rightSizedPendingSplits = (int) (amountOfWork / averageSplitExecutionWallTimeInMillis);
+            if (rightSizedPendingSplits > maxAllowedValue) {
+                return maxAllowedValue;
+            }
+            else {
+                return rightSizedPendingSplits;
+            }
+        }
+        else {
+            return maxAllowedValue;
+        }
+    }
+
     @SuppressWarnings("FieldAccessNotGuarded")
     public PartitionedSplitsInfo getUnacknowledgedPartitionedSplitsInfo()
     {
@@ -674,11 +699,7 @@ public final class HttpRemoteTask
 
     public synchronized Collection<ScheduledSplit> getAllUnprocessedSplits(PlanNodeId planNodeId)
     {
-        checkState(lastTaskStatus.isPresent(), "lastTaskStatus is null when getAllUnprocessedSplits is called");
-
-        List<ScheduledSplit> unprocessedSplitsFromTaskStatus = lastTaskStatus.get().getUnprocessedSplits();
-        unprocessedSplitsFromTaskStatus.addAll(pendingSplits.values());
-        return unprocessedSplitsFromTaskStatus;
+        return pendingSplits.values();
     }
 
     private long getQueuedPartitionedSplitsWeight()
@@ -792,6 +813,7 @@ public final class HttpRemoteTask
         // Update stats before split queue space to ensure node stats are up to date before waking up the scheduler
         updateTaskStats();
         updateSplitQueueSpace();
+        splitAcknowledgementListeners.invoke(this, executor);
     }
 
     private void onSuccessTaskInfo(TaskInfo result)

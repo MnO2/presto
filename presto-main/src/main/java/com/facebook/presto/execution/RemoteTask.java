@@ -54,6 +54,7 @@ public interface RemoteTask
     boolean isTaskIdling();
 
     boolean anyPendingSplitProcessed();
+    int getEstimatedRightSizedQueuedSplits();
 
     ListenableFuture<?> removeRemoteSource(TaskId remoteSourceTaskId);
 

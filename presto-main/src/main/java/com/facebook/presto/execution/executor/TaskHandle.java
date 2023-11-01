@@ -18,6 +18,7 @@ import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitConcurrencyController;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffer;
+import com.facebook.presto.operator.ExchangeClient;
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.Duration;
 
@@ -36,7 +37,6 @@ import java.util.function.DoubleSupplier;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 @ThreadSafe
@@ -63,6 +63,7 @@ public class TaskHandle
     private final Optional<OutputBuffer> outputBuffer;
     private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
     private AtomicBoolean anySplitProcessed = new AtomicBoolean(false);
+    private final ExchangeClient.ExponentialMovingAverage averageSplitExecutionWallTimeInMillis;
 
     public TaskHandle(
             TaskId taskId,
@@ -94,6 +95,7 @@ public class TaskHandle
                 requireNonNull(splitConcurrencyAdjustFrequency, "splitConcurrencyAdjustFrequency is null"));
         this.hostShutDownListener = requireNonNull(hostShutDownListener, "hostShutDownListener is null");
         this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
+        this.averageSplitExecutionWallTimeInMillis = new ExchangeClient.ExponentialMovingAverage(0.5, 1000);
     }
 
     public synchronized Priority addScheduledNanos(long durationNanos)
@@ -198,12 +200,11 @@ public class TaskHandle
         if (destroyed) {
             return null;
         }
-        if (isShuttingDown.get()) {
-            boolean isAnyQueuedSplitStarted = isAnySplitStarted(queuedLeafSplits);
-            checkState(!isAnyQueuedSplitStarted, String.format("queued split contains started splits for task %s", taskId));
-            return null;
-        }
-
+//        if (isShuttingDown.get()) {
+//            boolean isAnyQueuedSplitStarted = isAnySplitStarted(queuedLeafSplits);
+//            checkState(!isAnyQueuedSplitStarted, String.format("queued split contains started splits for task %s", taskId));
+//            return null;
+//        }
         if (runningLeafSplits.size() >= concurrencyController.getTargetConcurrency()) {
             return null;
         }
@@ -259,8 +260,15 @@ public class TaskHandle
         return queuedLeafSplits.size();
     }
 
+    public synchronized long getAverageSplitExecutionWallTimeInMillis()
+    {
+        return averageSplitExecutionWallTimeInMillis.get();
+    }
+
     public synchronized void splitComplete(PrioritizedSplitRunner split)
     {
+        long splitExecutionWallTime = split.getWallTimeFromStartInMillis();
+        averageSplitExecutionWallTimeInMillis.update(splitExecutionWallTime);
         concurrencyController.splitFinished(split.getScheduledNanos(), utilizationSupplier.getAsDouble(), runningLeafSplits.size());
         runningIntermediateSplits.remove(split);
         runningLeafSplits.remove(split);

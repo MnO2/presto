@@ -78,6 +78,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static com.facebook.airlift.json.JsonCodec.listJsonCodec;
@@ -148,7 +149,7 @@ public class MockRemoteTaskFactory
                 createInitialEmptyOutputBuffers(BROADCAST),
                 nodeStatsTracker,
                 true,
-                new TableWriteInfo(Optional.empty(), Optional.empty(), Optional.empty()));
+                new TableWriteInfo(Optional.empty(), Optional.empty(), Optional.empty()), t -> {});
     }
 
     @Override
@@ -161,7 +162,8 @@ public class MockRemoteTaskFactory
             OutputBuffers outputBuffers,
             NodeTaskMap.NodeStatsTracker nodeStatsTracker,
             boolean summarizeTaskInfo,
-            TableWriteInfo tableWriteInfo)
+            TableWriteInfo tableWriteInfo,
+            Consumer<RemoteTask> splitAcknowledgementListener)
     {
         return new MockRemoteTask(taskId, fragment, node.getNodeIdentifier(), executor, scheduledExecutor, initialSplits, nodeStatsTracker);
     }
@@ -301,7 +303,8 @@ public class MockRemoteTaskFactory
                             0L,
                             0L,
                             ImmutableList.of(),
-                            isTaskIdling),
+                            isTaskIdling,
+                            1000L),
                     DateTime.now(),
                     outputBuffer.getInfo(),
                     ImmutableSet.of(),
@@ -348,7 +351,8 @@ public class MockRemoteTaskFactory
                     combinedSplitsInfo.getWeightSum() - queuedSplitsInfo.getWeightSum(),
                     0L,
                     ImmutableList.of(),
-                    isTaskIdling);
+                    isTaskIdling,
+                    1000L);
         }
 
         private void updateTaskStats()
@@ -444,6 +448,11 @@ public class MockRemoteTaskFactory
         public boolean anyPendingSplitProcessed()
         {
             return false;
+        }
+
+        public int getEstimatedRightSizedQueuedSplits()
+        {
+            return 1000;
         }
 
         @Override

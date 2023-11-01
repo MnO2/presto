@@ -356,7 +356,7 @@ public class TestSplitRetrySourcePartitionedScheduler
     {
         SourcePartitionedScheduler sourcePartitionedScheduler = getSourcePartitionedScheduler(connectorSplitSource, stage, nodeManager, nodeTaskMap, splitBatchSize);
         sourcePartitionedScheduler.startLifespan(Lifespan.taskWide(), NOT_PARTITIONED);
-        return new SplitRetrySourcePartitionedScheduler(sourcePartitionedScheduler, stage);
+        return new SplitAcknowledgementSourcePartitionedScheduler(sourcePartitionedScheduler, stage);
     }
 
     private static SourcePartitionedScheduler getSourcePartitionedScheduler(

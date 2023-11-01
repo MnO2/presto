@@ -19,7 +19,7 @@ import com.google.common.collect.ImmutableList;
 import static com.google.common.util.concurrent.Futures.nonCancellationPropagating;
 import static java.util.Objects.requireNonNull;
 
-public class SplitRetrySourcePartitionedScheduler
+public class SplitAcknowledgementSourcePartitionedScheduler
         implements StageScheduler
 {
     SourcePartitionedScheduler sourcePartitionedScheduler;
@@ -27,7 +27,7 @@ public class SplitRetrySourcePartitionedScheduler
     boolean isSourcePartitionedSchedulerFinished;
     int splitsScheduled;
 
-    public SplitRetrySourcePartitionedScheduler(SourcePartitionedScheduler sourcePartitionedScheduler, SqlStageExecution stage)
+    public SplitAcknowledgementSourcePartitionedScheduler(SourcePartitionedScheduler sourcePartitionedScheduler, SqlStageExecution stage)
     {
         this.sourcePartitionedScheduler = requireNonNull(sourcePartitionedScheduler);
         this.stage = requireNonNull(stage);

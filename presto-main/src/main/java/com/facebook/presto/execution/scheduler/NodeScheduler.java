@@ -414,11 +414,18 @@ public class NodeScheduler
         for (Split split : splits) {
             // node placement is forced by the bucket to node map
             InternalNode node = bucketNodeMap.getAssignedNode(split).get();
+            // take the max to be very conservative.
+            Optional<Integer> maxEstimatedRightSizedQueuedSplits = existingTasks.stream().filter(t -> t.getNodeId().equals(node.getNodeIdentifier())).map(RemoteTask::getEstimatedRightSizedQueuedSplits).max(Integer::compare);
+            int estimatedRightSizedQueuedSplits = maxUnacknowledgedSplitsPerTask;
+            if (maxEstimatedRightSizedQueuedSplits.isPresent()) {
+                estimatedRightSizedQueuedSplits = maxEstimatedRightSizedQueuedSplits.get();
+            }
+
             boolean isCacheable = bucketNodeMap.isSplitCacheable(split);
             SplitWeight splitWeight = split.getSplitWeight();
 
             // if node is full, don't schedule now, which will push back on the scheduling of splits
-            if (canAssignSplitToDistributionNode(assignmentStats, node, maxSplitsWeightPerNode, maxPendingSplitsWeightPerTask, maxUnacknowledgedSplitsPerTask, splitWeight)) {
+            if (canAssignSplitToDistributionNode(assignmentStats, node, maxSplitsWeightPerNode, maxPendingSplitsWeightPerTask, maxUnacknowledgedSplitsPerTask, estimatedRightSizedQueuedSplits, splitWeight)) {
                 if (isCacheable) {
                     split = new Split(split.getConnectorId(), split.getTransactionHandle(), split.getConnectorSplit(), split.getLifespan(), new SplitContext(true));
                     nodeSelectionStats.incrementBucketedPreferredNodeSelectedCount();
@@ -438,9 +445,10 @@ public class NodeScheduler
         return new SplitPlacementResult(blocked, ImmutableMultimap.copyOf(assignments));
     }
 
-    private static boolean canAssignSplitToDistributionNode(NodeAssignmentStats assignmentStats, InternalNode node, long maxSplitsWeightPerNode, long maxPendingSplitsWeightPerTask, int maxUnacknowledgedSplitsPerTask, SplitWeight splitWeight)
+    private static boolean canAssignSplitToDistributionNode(NodeAssignmentStats assignmentStats, InternalNode node, long maxSplitsWeightPerNode, long maxPendingSplitsWeightPerTask, int maxUnacknowledgedSplitsPerTask, int estimatedRightSizedQueuedSplits, SplitWeight splitWeight)
     {
-        return assignmentStats.getUnacknowledgedSplitCountForStage(node) < maxUnacknowledgedSplitsPerTask &&
+        return assignmentStats.getQueuedSplitCountForStage(node) < estimatedRightSizedQueuedSplits &&
+                (assignmentStats.getUnacknowledgedSplitCountForStage(node) < maxUnacknowledgedSplitsPerTask) &&
                 (canAssignSplitBasedOnWeight(assignmentStats.getTotalSplitsWeight(node), maxSplitsWeightPerNode, splitWeight) ||
                         canAssignSplitBasedOnWeight(assignmentStats.getQueuedSplitsWeightForStage(node), maxPendingSplitsWeightPerTask, splitWeight));
     }

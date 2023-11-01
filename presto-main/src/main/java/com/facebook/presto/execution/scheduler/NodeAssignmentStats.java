@@ -76,6 +76,12 @@ public final class NodeAssignmentStats
         return stageInfo == null ? 0 : stageInfo.getUnacknowledgedSplitCount();
     }
 
+    public int getQueuedSplitCountForStage(InternalNode node)
+    {
+        PendingSplitInfo stageInfo = stageQueuedSplitInfo.get(node.getNodeIdentifier());
+        return stageInfo == null ? 0 : stageInfo.getQueuedSplitCount();
+    }
+
     public void addAssignedSplit(InternalNode node, SplitWeight splitWeight)
     {
         String nodeId = node.getNodeIdentifier();

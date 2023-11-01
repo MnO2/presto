@@ -81,6 +81,7 @@ public class TaskStatus
     private final long retryableSplitCount;
     private final List<ScheduledSplit> unprocessedSplits;
     private final boolean isTaskIdling;
+    private final long averageSplitExecutionWallTimeInMillis;
 
     @JsonCreator
     @ThriftConstructor
@@ -108,7 +109,8 @@ public class TaskStatus
             @JsonProperty("runningPartitionedSplitsWeight") long runningPartitionedSplitsWeight,
             @JsonProperty("retryableSplitCount") long retryableSplitCount,
             @JsonProperty("unprocessedSplits") List<ScheduledSplit> unprocessedSplits,
-            @JsonProperty("isTaskIdling") boolean isTaskIdling)
+            @JsonProperty("isTaskIdling") boolean isTaskIdling,
+            @JsonProperty("averageSplitExecutionWallTimeInMillis") long averageSplitExecutionWallTimeInMillis)
     {
         this.taskInstanceIdLeastSignificantBits = taskInstanceIdLeastSignificantBits;
         this.taskInstanceIdMostSignificantBits = taskInstanceIdMostSignificantBits;
@@ -146,6 +148,7 @@ public class TaskStatus
         this.retryableSplitCount = retryableSplitCount;
         this.unprocessedSplits = unprocessedSplits;
         this.isTaskIdling = isTaskIdling;
+        this.averageSplitExecutionWallTimeInMillis = averageSplitExecutionWallTimeInMillis;
     }
 
     @JsonProperty
@@ -316,6 +319,13 @@ public class TaskStatus
         return isTaskIdling;
     }
 
+    @JsonProperty
+    @ThriftField(25)
+    public long getAverageSplitExecutionWallTimeInMillis()
+    {
+        return averageSplitExecutionWallTimeInMillis;
+    }
+
     @Override
     public String toString()
     {
@@ -350,7 +360,8 @@ public class TaskStatus
                 0L,
                 0L,
                 ImmutableList.of(),
-                false);
+                false,
+                1000);
     }
 
     public static TaskStatus failWith(TaskStatus taskStatus, TaskState state, List<ExecutionFailureInfo> exceptions)
@@ -379,6 +390,7 @@ public class TaskStatus
                 taskStatus.getRunningPartitionedSplitsWeight(),
                 taskStatus.getRetryableSplitCount(),
                 taskStatus.getUnprocessedSplits(),
-                taskStatus.getIsTaskIdling());
+                taskStatus.getIsTaskIdling(),
+                taskStatus.getAverageSplitExecutionWallTimeInMillis());
     }
 }

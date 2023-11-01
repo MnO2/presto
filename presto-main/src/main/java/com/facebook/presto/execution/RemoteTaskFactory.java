@@ -22,6 +22,8 @@ import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.google.common.collect.Multimap;
 
+import java.util.function.Consumer;
+
 import static com.facebook.presto.execution.NodeTaskMap.NodeStatsTracker;
 
 public interface RemoteTaskFactory
@@ -34,5 +36,6 @@ public interface RemoteTaskFactory
             OutputBuffers outputBuffers,
             NodeStatsTracker nodeStatsTracker,
             boolean summarizeTaskInfo,
-            TableWriteInfo tableWriteInfo);
+            TableWriteInfo tableWriteInfo,
+            Consumer<RemoteTask> splitAcknowledgementListener);
 }
