@@ -403,7 +403,7 @@ public class SectionExecutionFactory
             }
 
             checkArgument(!plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution());
-            if (isRetryOfFailedSplitsEnabled) {
+            if (isRetryOfFailedSplitsEnabled && plan.getFragment().isLeaf()) {
                 return newSourcePartitionedSchedulerWithSplitRetryAsStageScheduler(stageExecution, planNodeId, splitSource, placementPolicy, splitBatchSize);
             }
             else {
