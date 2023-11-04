@@ -401,7 +401,7 @@ public class SectionExecutionFactory
             }
 
             checkArgument(!plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution());
-            if (isRetryOfFailedSplitsEnabled && plan.getFragment().isLeaf()) {
+            if (isRetryOfFailedSplitsEnabled && plan.getFragment().isLeaf() && !PlanFragment.containLocalExchange(plan.getFragment().getRoot())) {
                 return newSourcePartitionedSchedulerWithSplitRetryAsStageScheduler(stageExecution, planNodeId, splitSource, placementPolicy, splitBatchSize);
             }
             else {
