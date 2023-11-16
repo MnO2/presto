@@ -1145,7 +1145,9 @@ public class TestPrestoSparkHttpClient
                         0,
                         0,
                         0L,
-                        0L);
+                        0L,
+                        ImmutableList.of(),
+                        false);
             }
         }
 
