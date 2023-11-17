@@ -65,6 +65,7 @@ import static com.facebook.presto.PrestoMediaTypes.APPLICATION_JACKSON_SMILE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_CURRENT_STATE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_WAIT;
 import static com.facebook.presto.server.TaskResourceUtils.convertToThriftTaskInfo;
+import static com.facebook.presto.server.TaskResourceUtils.failWithTaskInfo;
 import static com.facebook.presto.server.TaskResourceUtils.isThriftRequest;
 import static com.facebook.presto.server.security.RoleType.INTERNAL;
 import static com.facebook.presto.util.TaskUtils.randomizeWaitTime;
@@ -91,6 +92,7 @@ public class TaskResource
     private final Codec<PlanFragment> planFragmentCodec;
     private final HandleResolver handleResolver;
     private final ConnectorTypeSerdeManager connectorTypeSerdeManager;
+    private final GracefulShutdownHandler shutdownHandler;
 
     @Inject
     public TaskResource(
@@ -100,7 +102,8 @@ public class TaskResource
             @ForAsyncRpc ScheduledExecutorService timeoutExecutor,
             JsonCodec<PlanFragment> planFragmentJsonCodec,
             HandleResolver handleResolver,
-            ConnectorTypeSerdeManager connectorTypeSerdeManager)
+            ConnectorTypeSerdeManager connectorTypeSerdeManager,
+            GracefulShutdownHandler shutdownHandler)
     {
         this.taskManager = requireNonNull(taskManager, "taskManager is null");
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
@@ -109,6 +112,7 @@ public class TaskResource
         this.planFragmentCodec = planFragmentJsonCodec;
         this.handleResolver = requireNonNull(handleResolver, "handleResolver is null");
         this.connectorTypeSerdeManager = requireNonNull(connectorTypeSerdeManager, "connectorTypeSerdeManager is null");
+        this.shutdownHandler = requireNonNull(shutdownHandler, "shutdownHandler is null");
     }
 
     @GET
@@ -131,6 +135,12 @@ public class TaskResource
     {
         requireNonNull(taskUpdateRequest, "taskUpdateRequest is null");
 
+        if (shutdownHandler.isShutdownRequested()) {
+            return Response.status(Status.GONE).build();
+        }
+
+        shutdownHandler.incrementPendingUpdateTaskCount();
+
         Session session = taskUpdateRequest.getSession().toSession(sessionPropertyManager, taskUpdateRequest.getExtraCredentials());
         TaskInfo taskInfo = taskManager.updateTask(session,
                 taskId,
@@ -139,6 +149,7 @@ public class TaskResource
                 taskUpdateRequest.getOutputIds(),
                 taskUpdateRequest.getTableWriteInfo());
 
+        shutdownHandler.decrementPendingUpdateTaskCount();
         if (shouldSummarize(uriInfo)) {
             taskInfo = taskInfo.summarize();
         }
@@ -161,6 +172,12 @@ public class TaskResource
         requireNonNull(taskId, "taskId is null");
 
         boolean isThriftRequest = isThriftRequest(httpHeaders);
+
+        if (shutdownHandler.getNoTaskAtGracefulShutdown().get()) {
+            TaskInfo taskInfo = taskManager.getTaskInfo(taskId);
+            asyncResponse.resume(failWithTaskInfo(taskInfo));
+            return;
+        }
 
         if (currentState == null || maxWait == null) {
             TaskInfo taskInfo = taskManager.getTaskInfo(taskId);
@@ -211,9 +228,13 @@ public class TaskResource
             @Suspended AsyncResponse asyncResponse)
     {
         requireNonNull(taskId, "taskId is null");
+        TaskStatus taskStatus = taskManager.getTaskStatus(taskId);
+        if (shutdownHandler.getNoTaskAtGracefulShutdown().get()) {
+            asyncResponse.resume(TaskStatus.failWith(taskStatus, TaskState.GRACEFUL_SHUTDOWN, ImmutableList.of()));
+            return;
+        }
 
         if (currentState == null || maxWait == null) {
-            TaskStatus taskStatus = taskManager.getTaskStatus(taskId);
             asyncResponse.resume(taskStatus);
             return;
         }
@@ -224,7 +245,7 @@ public class TaskResource
         // to justify group-by-group execution. In order to fix this, REST endpoint /v1/{task}/status will need change.
         ListenableFuture<TaskStatus> futureTaskStatus = addTimeout(
                 taskManager.getTaskStatus(taskId, currentState),
-                () -> taskManager.getTaskStatus(taskId),
+                () -> taskStatus,
                 waitTime,
                 timeoutExecutor);
 
