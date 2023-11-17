@@ -104,6 +104,8 @@ public final class PageBufferClient
     private boolean completed;
     @GuardedBy("this")
     private String taskInstanceId;
+    @GuardedBy("this")
+    private boolean isServerGracefulShutdown;
 
     private final AtomicLong rowsReceived = new AtomicLong();
     private final AtomicInteger pagesReceived = new AtomicInteger();
@@ -189,6 +191,11 @@ public final class PageBufferClient
     public synchronized boolean isRunning()
     {
         return future != null;
+    }
+
+    public boolean isServerGracefulShutdown()
+    {
+        return isServerGracefulShutdown;
     }
 
     @Override
@@ -342,10 +349,15 @@ public final class PageBufferClient
                 requestsCompleted.incrementAndGet();
 
                 synchronized (PageBufferClient.this) {
+                    if (result.isServerGracefulShutdown()) {
+                        isServerGracefulShutdown = true;
+                    }
+
                     // client is complete, acknowledge it by sending it a delete in the next request
                     if (result.isClientComplete()) {
                         completed = true;
                     }
+
                     if (future == resultFuture) {
                         future = null;
                     }
@@ -490,14 +502,14 @@ public final class PageBufferClient
 
     public static class PagesResponse
     {
-        public static PagesResponse createPagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean complete)
+        public static PagesResponse createPagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean complete, boolean gracefulShutdown)
         {
-            return new PagesResponse(taskInstanceId, token, nextToken, pages, complete);
+            return new PagesResponse(taskInstanceId, token, nextToken, pages, complete, gracefulShutdown);
         }
 
-        public static PagesResponse createEmptyPagesResponse(String taskInstanceId, long token, long nextToken, boolean complete)
+        public static PagesResponse createEmptyPagesResponse(String taskInstanceId, long token, long nextToken, boolean complete, boolean gracefulShutdown)
         {
-            return new PagesResponse(taskInstanceId, token, nextToken, ImmutableList.of(), complete);
+            return new PagesResponse(taskInstanceId, token, nextToken, ImmutableList.of(), complete, gracefulShutdown);
         }
 
         private final String taskInstanceId;
@@ -505,14 +517,16 @@ public final class PageBufferClient
         private final long nextToken;
         private final List<SerializedPage> pages;
         private final boolean clientComplete;
+        private final boolean gracefulShutdown;
 
-        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete)
+        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete, boolean gracefulShutdown)
         {
             this.taskInstanceId = taskInstanceId;
             this.token = token;
             this.nextToken = nextToken;
             this.pages = ImmutableList.copyOf(pages);
             this.clientComplete = clientComplete;
+            this.gracefulShutdown = gracefulShutdown;
         }
 
         public long getToken()
@@ -535,6 +549,11 @@ public final class PageBufferClient
             return clientComplete;
         }
 
+        public boolean isServerGracefulShutdown()
+        {
+            return gracefulShutdown;
+        }
+
         public String getTaskInstanceId()
         {
             return taskInstanceId;
@@ -548,6 +567,7 @@ public final class PageBufferClient
                     .add("nextToken", nextToken)
                     .add("pagesSize", pages.size())
                     .add("clientComplete", clientComplete)
+                    .add("gracefulShutdown", gracefulShutdown)
                     .toString();
         }
     }
