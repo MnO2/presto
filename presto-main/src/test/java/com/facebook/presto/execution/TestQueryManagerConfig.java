@@ -82,8 +82,8 @@ public class TestQueryManagerConfig
                 .setRateLimiterCacheLimit(1000)
                 .setRateLimiterCacheWindowMinutes(5)
                 .setEnableWorkerIsolation(false)
-                .setEnableGracefulShutdown(true)
-                .setEnableRetryForFailedSplits(true));
+                .setEnableGracefulShutdown(false)
+                .setEnableRetryForFailedSplits(false));
     }
 
     @Test
@@ -136,8 +136,8 @@ public class TestQueryManagerConfig
                 .put("query.cte-hash-partition-count", "128")
                 .put("query.cte-partitioning-provider-catalog", "hive")
                 .put("query-manager.enable-worker-isolation", "true")
-                .put("query-manager.enable-graceful-shutdown", "false")
-                .put("query-manager.enable-retry-of-failed-splits", "false")
+                .put("query-manager.enable-graceful-shutdown", "true")
+                .put("query-manager.enable-retry-of-failed-splits", "true")
                 .build();
 
         QueryManagerConfig expected = new QueryManagerConfig()
@@ -188,8 +188,8 @@ public class TestQueryManagerConfig
                 .setCteHashPartitionCount(128)
                 .setCtePartitioningProviderCatalog("hive")
                 .setEnableWorkerIsolation(true)
-                .setEnableGracefulShutdown(false)
-                .setEnableRetryForFailedSplits(false);
+                .setEnableGracefulShutdown(true)
+                .setEnableRetryForFailedSplits(true);
         ConfigAssertions.assertFullMapping(properties, expected);
     }
 }
