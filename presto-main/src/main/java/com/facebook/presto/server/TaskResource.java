@@ -135,7 +135,7 @@ public class TaskResource
     {
         requireNonNull(taskUpdateRequest, "taskUpdateRequest is null");
 
-        if (shutdownHandler.isShutdownRequested()) {
+        if (shutdownHandler.isGracefulShutdownRequested()) {
             return Response.status(Status.GONE).build();
         }
 
@@ -296,7 +296,6 @@ public class TaskResource
         return taskInfo;
     }
 
-    @GET
     @Path("{taskId}/results/{bufferId}/{token}/acknowledge")
     public void acknowledgeResults(
             @PathParam("taskId") TaskId taskId,
