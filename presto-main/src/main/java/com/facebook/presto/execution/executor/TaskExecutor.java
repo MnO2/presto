@@ -281,7 +281,7 @@ public class TaskExecutor
                         TaskId taskId = taskHandle.getTaskId();
                         if (!taskHandle.getOutputBuffer().isPresent()) {
                             log.info("No output buffer for task %s", taskId);
-                            taskHandle.forceFailure();
+                            taskHandle.handleShutDown();
                             return;
                         }
 
