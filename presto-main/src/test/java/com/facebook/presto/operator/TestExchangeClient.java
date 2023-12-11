@@ -884,6 +884,8 @@ public class TestExchangeClient
                 scheduler,
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
                 pageBufferClientCallbackExecutor,
+                false,
+                false,
                 new NodeStatusNotificationManager(),
                 exchangeClientStats);
     }
