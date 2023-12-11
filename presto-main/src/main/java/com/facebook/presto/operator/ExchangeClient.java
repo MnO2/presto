@@ -404,7 +404,9 @@ public class ExchangeClient
             // This would run a little risk of OOMing the pulling end, but if we don't pull then this query would fail due to the upstream worker shutdown either.
             // As long as we don't have a spike of the upstream workers shutting down together at any moment. It should be fine in general.
             pendingShuttingdownClients.add(client);
-            client.scheduleRequest(sinkMaxBufferSize);
+
+            DataSize max = new DataSize(min(sinkMaxBufferSize.toBytes(), maxResponseSize.toBytes()), BYTE);
+            client.scheduleRequest(max);
             i++;
         }
 
