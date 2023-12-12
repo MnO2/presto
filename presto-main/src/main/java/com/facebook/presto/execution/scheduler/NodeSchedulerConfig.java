@@ -33,9 +33,9 @@ public class NodeSchedulerConfig
 
     private int minCandidates = 10;
     private boolean includeCoordinator = true;
-    private int maxSplitsPerNode = 100;
+    private int maxSplitsPerNode = 20;
     private int maxPendingSplitsPerTask = 10;
-    private int maxUnacknowledgedSplitsPerTask = 500;
+    private int maxUnacknowledgedSplitsPerTask = 10;
     private String networkTopology = NetworkTopologyType.LEGACY;
     private NodeSelectionHashStrategy nodeSelectionHashStrategy = NodeSelectionHashStrategy.MODULAR_HASHING;
     private int minVirtualNodeCount = 1000;
