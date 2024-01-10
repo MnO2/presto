@@ -21,6 +21,7 @@ import com.facebook.airlift.http.server.HttpServerBinder;
 import com.facebook.airlift.http.server.HttpServerConfig;
 import com.facebook.airlift.http.server.HttpServerInfo;
 import com.facebook.airlift.http.server.HttpServerProvider;
+import com.facebook.airlift.http.server.HttpsConfig;
 import com.facebook.airlift.http.server.LocalAnnouncementHttpServerInfo;
 import com.facebook.airlift.http.server.RequestStats;
 import com.facebook.airlift.http.server.TheAdminServlet;
@@ -31,6 +32,7 @@ import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
+import org.eclipse.jetty.util.ssl.SslContextFactory;
 
 import javax.servlet.Filter;
 import javax.servlet.Servlet;
@@ -42,6 +44,7 @@ import static com.facebook.airlift.configuration.ConfigBinder.configBinder;
 import static com.facebook.airlift.event.client.EventBinder.eventBinder;
 import static com.google.inject.multibindings.MapBinder.newMapBinder;
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
+import static com.google.inject.multibindings.OptionalBinder.newOptionalBinder;
 import static org.weakref.jmx.guice.ExportBinder.newExporter;
 
 public class HttpServerModule
@@ -53,6 +56,7 @@ public class HttpServerModule
         binder.disableCircularProxies();
 
         binder.bind(HttpServer.class).toProvider(HttpServerProvider.class).in(Scopes.SINGLETON);
+        newOptionalBinder(binder, HttpServer.ClientCertificate.class).setDefault().toInstance(HttpServer.ClientCertificate.NONE);
         newExporter(binder).export(HttpServer.class).withGeneratedName();
         binder.bind(HttpServerInfo.class).in(Scopes.SINGLETON);
         binder.bind(RequestStats.class).in(Scopes.SINGLETON);
@@ -60,10 +64,12 @@ public class HttpServerModule
         newSetBinder(binder, Filter.class, TheServlet.class);
         newSetBinder(binder, Filter.class, TheAdminServlet.class);
         newSetBinder(binder, HttpServerBinder.HttpResourceBinding.class, TheServlet.class);
+        newOptionalBinder(binder, SslContextFactory.Server.class);
 
         newExporter(binder).export(RequestStats.class).withGeneratedName();
 
         configBinder(binder).bindConfig(HttpServerConfig.class);
+        newOptionalBinder(binder, HttpsConfig.class);
 
         eventBinder(binder).bindEventClient(HttpRequestEvent.class);
 
