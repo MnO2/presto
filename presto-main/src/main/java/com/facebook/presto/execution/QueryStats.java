@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.Set;
 
+import static com.facebook.presto.common.RuntimeUnit.NONE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.units.DataSize.Unit.BYTE;
 import static io.airlift.units.DataSize.succinctBytes;
@@ -411,6 +412,9 @@ public class QueryStats
                 String metricName = String.format("S%d-%s", stageId, name);
                 mergedRuntimeStats.mergeMetric(metricName, metric);
             });
+
+            String metricName = String.format("S%d-%s", stageId, "totalCpuTime");
+            mergedRuntimeStats.addMetricValue(metricName, NONE, stageExecutionStats.getTotalCpuTime().roundTo(MILLISECONDS));
         }
 
         if (rootStage.isPresent()) {
