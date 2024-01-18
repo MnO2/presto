@@ -313,6 +313,8 @@ public class QueryStats
 
         long totalScheduledTime = 0;
         long totalCpuTime = 0;
+        long totalLeafCpuTime = 0;
+        long totalNonLeafCpuTime = 0;
         long retriedCpuTime = 0;
         long totalBlockedTime = 0;
 
@@ -372,6 +374,13 @@ public class QueryStats
 
             if (stageInfo.getPlan().isPresent()) {
                 PlanFragment plan = stageInfo.getPlan().get();
+                if (plan.isLeaf()) {
+                    totalLeafCpuTime += stageExecutionStats.getTotalCpuTime().roundTo(MILLISECONDS);
+                }
+                else {
+                    totalNonLeafCpuTime += stageExecutionStats.getTotalCpuTime().roundTo(MILLISECONDS);
+                }
+
                 for (OperatorStats operatorStats : stageExecutionStats.getOperatorSummaries()) {
                     // NOTE: we need to literally check each operator type to tell if the source is from table input or shuffled input. A stage can have input from both types of source.
                     String operatorType = operatorStats.getOperatorType();
@@ -413,9 +422,11 @@ public class QueryStats
                 mergedRuntimeStats.mergeMetric(metricName, metric);
             });
 
-            String metricName = String.format("S%d-%s", stageId, "totalCpuTime");
-            mergedRuntimeStats.addMetricValue(metricName, NONE, stageExecutionStats.getTotalCpuTime().roundTo(MILLISECONDS));
+            mergedRuntimeStats.addMetricValue(String.format("S%d-%s", stageId, "totalCpuTime"), NONE, stageExecutionStats.getTotalCpuTime().roundTo(MILLISECONDS));
         }
+
+        mergedRuntimeStats.addMetricValue(String.format("%s", "totalLeafCpuTime"), NONE, totalLeafCpuTime);
+        mergedRuntimeStats.addMetricValue(String.format("%s", "totalNonLeafCpuTime"), NONE, totalNonLeafCpuTime);
 
         if (rootStage.isPresent()) {
             StageExecutionStats outputStageStats = rootStage.get().getLatestAttemptExecutionInfo().getStats();
