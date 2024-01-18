@@ -98,7 +98,8 @@ public class HttpNativeExecutionTaskResultFetcher
                 TASK_ERROR_MESSAGE,
                 maxErrorDuration,
                 requireNonNull(errorRetryScheduledExecutor, "errorRetryScheduledExecutor is null"),
-                "getting results from native process");
+                "getting results from native process",
+                false);
     }
 
     public void start()

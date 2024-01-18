@@ -210,7 +210,8 @@ public class NativeExecutionTask
                 "sendUpdateRequest encountered too many errors talking to native process",
                 remoteTaskMaxErrorDuration,
                 errorRetryScheduledExecutor,
-                "sending update request to native process");
+                "sending update request to native process",
+                false);
 
         while (true) {
             getFutureValue(errorTracker.acquireRequestPermit());
