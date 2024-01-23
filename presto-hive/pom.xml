@@ -457,6 +457,12 @@
             <artifactId>presto-testing-docker</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.jetty</groupId>
+            <artifactId>jetty-alpn-java-server</artifactId>
+            <version>9.4.53.v20231009</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -486,6 +492,7 @@
                     <ignoredDependencies>
                         <ignoredDependency>org.glassfish.jersey.core:jersey-common:jar</ignoredDependency>
                         <ignoredDependency>org.eclipse.jetty:jetty-server:jar</ignoredDependency>
+                        <ignoredDependency>org.eclipse.jetty:jetty-alpn-java-server:jar</ignoredDependency>
                     </ignoredDependencies>
                 </configuration>
             </plugin>
