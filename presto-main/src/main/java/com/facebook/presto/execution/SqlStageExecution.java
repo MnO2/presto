@@ -661,6 +661,7 @@ public final class SqlStageExecution
                     .map(this::rewriteTransportFailure)
                     .map(ExecutionFailureInfo::toException)
                     .orElse(new PrestoException(GENERIC_INTERNAL_ERROR, "A task failed for an unknown reason"));
+
             if (isRecoverable(taskStatus.getFailures())) {
                 try {
                     stageTaskRecoveryCallback.get().recover(taskId);

@@ -275,6 +275,7 @@ public class TaskExecutor
         //before killing the tasks,  make sure output buffer data is consumed.
         CountDownLatch latch = new CountDownLatch(currentTasksSnapshot.size());
         log.warn("GracefulShutdown:: Going to shutdown %s tasks", currentTasksSnapshot.size());
+
         for (TaskHandle taskHandle : currentTasksSnapshot) {
             taskShutdownExecutor.execute(
                     () -> {
@@ -320,20 +321,23 @@ public class TaskExecutor
                                 return;
                             }
 
+                            // Intentionally failing the task so that the downstream would stop polling.
+                            taskHandle.forceFailure(String.format("Forced outputBuffer failure to measure size. total outputBuffer size: %d", taskId, outputBuffer.getInfo().getTotalBufferedBytes()));
+
                             //wait for output buffer to be empty
-                            startTime = System.nanoTime();
-                            while (!taskHandle.isOutputBufferEmpty()) {
-                                try {
-                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s", taskId, outputBuffer.getInfo());
-                                    Thread.sleep(waitTimeMillis);
-                                }
-                                catch (InterruptedException e) {
-                                    log.error(e, "GracefulShutdown got interrupted for task %s", taskId);
-                                }
-                            }
-                            outputBufferEmptyWaitTime.add(Duration.nanosSince(startTime));
-                            log.warn("GracefulShutdown:: calling handleShutDown for task- %s, buffer info : %s", taskId, outputBuffer.getInfo());
-                            taskHandle.handleShutDown();
+//                            startTime = System.nanoTime();
+//                            while (!taskHandle.isOutputBufferEmpty()) {
+//                                try {
+//                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s", taskId, outputBuffer.getInfo());
+//                                    Thread.sleep(waitTimeMillis);
+//                                }
+//                                catch (InterruptedException e) {
+//                                    log.error(e, "GracefulShutdown got interrupted for task %s", taskId);
+//                                }
+//                            }
+//                            outputBufferEmptyWaitTime.add(Duration.nanosSince(startTime));
+//                            log.warn("GracefulShutdown:: calling handleShutDown for task- %s, buffer info : %s", taskId, outputBuffer.getInfo());
+//                            taskHandle.handleShutDown();
                         }
                         catch (Throwable ex) {
                             log.error("Exception while doing graceful preemption for task %s", taskId, ex);

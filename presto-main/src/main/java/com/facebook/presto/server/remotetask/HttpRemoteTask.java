@@ -29,7 +29,11 @@ import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.stats.DecayCounter;
 import com.facebook.drift.transport.netty.codec.Protocol;
 import com.facebook.presto.Session;
+import com.facebook.presto.common.ErrorCode;
+import com.facebook.presto.common.RuntimeStats;
+import com.facebook.presto.common.RuntimeUnit;
 import com.facebook.presto.connector.ConnectorTypeSerdeManager;
+import com.facebook.presto.execution.ExecutionFailureInfo;
 import com.facebook.presto.execution.FutureStateChange;
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.NodeTaskMap.NodeStatsTracker;
@@ -228,6 +232,8 @@ public final class HttpRemoteTask
 
     private Optional<TaskStatus> lastTaskStatus = Optional.empty();
     private boolean enableRetryForFailedSplits;
+    private boolean isLeaf;
+    private long peakOutputBufferBytes;
 
     public HttpRemoteTask(
             Session session,
@@ -329,7 +335,7 @@ public final class HttpRemoteTask
                     .map(PlanNode::getId)
                     .collect(toImmutableSet());
             this.taskUpdateRequestSize = taskUpdateRequestSize;
-
+            this.isLeaf = planFragment.isLeaf();
             for (Entry<PlanNodeId, Split> entry : requireNonNull(initialSplits, "initialSplits is null").entries()) {
                 ScheduledSplit scheduledSplit = new ScheduledSplit(nextSplitId.getAndIncrement(), entry.getKey(), entry.getValue());
                 pendingSplits.put(entry.getKey(), scheduledSplit);
@@ -395,6 +401,17 @@ public final class HttpRemoteTask
             taskStatusFetcher.addStateChangeListener(newStatus -> {
                 TaskState state = newStatus.getState();
                 if (state.isDone()) {
+                    Optional<ErrorCode> errorCode = newStatus.getFailures().stream().findFirst().map(ExecutionFailureInfo::getErrorCode);
+                    if (isLeaf && errorCode.isPresent() && errorCode.get().getName().equals("UNRECOVERABLE_HOST_SHUTTING_DOWN")) {
+                        RuntimeStats outputBufferBytesStats = new RuntimeStats();
+                        //node and task we are retrying from and destination node and task we are retrying to
+                        String metricName = new StringBuilder("peakOutputBufferBytes-")
+                                .append(taskId)
+                                .toString();
+                        outputBufferBytesStats.addMetricValue(metricName, RuntimeUnit.NONE, taskInfoFetcher.getTaskInfo().getOutputBuffers().getTotalBufferedBytes());
+                        session.getRuntimeStats().update(outputBufferBytesStats);
+                    }
+
                     cleanUpTask();
                 }
                 else {
@@ -817,6 +834,10 @@ public final class HttpRemoteTask
 
     private void updateTaskInfo(TaskInfo taskInfo, boolean isTaskInfoThriftTransportEnabled)
     {
+        if (peakOutputBufferBytes < taskInfo.getOutputBuffers().getTotalBufferedBytes()) {
+            peakOutputBufferBytes = taskInfo.getOutputBuffers().getTotalBufferedBytes();
+        }
+
         taskStatusFetcher.updateTaskStatus(taskInfo.getTaskStatus());
         if (isTaskInfoThriftTransportEnabled) {
             taskInfo = convertFromThriftTaskInfo(taskInfo, connectorTypeSerdeManager, handleResolver);
