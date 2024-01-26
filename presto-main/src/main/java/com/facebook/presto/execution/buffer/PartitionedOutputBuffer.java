@@ -18,17 +18,24 @@ import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.memory.context.LocalMemoryContext;
+import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 
+import javax.annotation.concurrent.GuardedBy;
+
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.execution.buffer.BufferState.FAILED;
 import static com.facebook.presto.execution.buffer.BufferState.FINISHED;
@@ -54,6 +61,8 @@ public class PartitionedOutputBuffer
 
     private final AtomicLong totalPagesAdded = new AtomicLong();
     private final AtomicLong totalRowsAdded = new AtomicLong();
+    @GuardedBy("this")
+    private final ConcurrentMap<OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
 
     public PartitionedOutputBuffer(
             String taskInstanceId,
@@ -227,6 +236,19 @@ public class PartitionedOutputBuffer
     public boolean isFinishedForLifespan(Lifespan lifespan)
     {
         return pageTracker.isFinishedForLifespan(lifespan);
+    }
+
+    @Override
+    public void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+    {
+        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed, downstreamStatsRequest.bufferRetainedSizeInBytes, System.currentTimeMillis(), downstreamStatsRequest.clientSentTime);
+        downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
+    }
+
+    @Override
+    public List<DownstreamStats> getDownstreamStats()
+    {
+        return downstreamStats.values().stream().collect(Collectors.toList());
     }
 
     @Override

@@ -15,9 +15,11 @@ package com.facebook.presto.operator;
 
 import com.facebook.airlift.concurrent.ThreadPoolExecutorMBean;
 import com.facebook.airlift.http.client.HttpClient;
+import com.facebook.airlift.json.JsonCodec;
 import com.facebook.drift.client.DriftClient;
 import com.facebook.presto.execution.QueryManagerConfig;
 import com.facebook.presto.memory.context.LocalMemoryContext;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.server.thrift.ThriftTaskClient;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -52,13 +54,15 @@ public class ExchangeClientFactory
     private final ThreadPoolExecutorMBean executorMBean;
     private final ExecutorService pageBufferClientCallbackExecutor;
     private final QueryManagerConfig queryManagerConfig;
+    private final JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec;
     @Inject
     public ExchangeClientFactory(
             ExchangeClientConfig config,
             @ForExchange HttpClient httpClient,
             @ForExchange DriftClient<ThriftTaskClient> driftClient,
             @ForExchange ScheduledExecutorService scheduler,
-            QueryManagerConfig queryManagerConfig)
+            QueryManagerConfig queryManagerConfig,
+            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
     {
         this(
                 config.getMaxBufferSize(),
@@ -71,7 +75,8 @@ public class ExchangeClientFactory
                 httpClient,
                 driftClient,
                 scheduler,
-                queryManagerConfig);
+                queryManagerConfig,
+                downstreamStatsRequestJsonCodec);
     }
 
     public ExchangeClientFactory(
@@ -85,7 +90,8 @@ public class ExchangeClientFactory
             HttpClient httpClient,
             DriftClient<ThriftTaskClient> driftClient,
             ScheduledExecutorService scheduler,
-            QueryManagerConfig queryManagerConfig)
+            QueryManagerConfig queryManagerConfig,
+            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
     {
         this.maxBufferedBytes = requireNonNull(maxBufferedBytes, "maxBufferedBytes is null");
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
@@ -94,6 +100,7 @@ public class ExchangeClientFactory
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.driftClient = requireNonNull(driftClient, "driftClient is null");
         this.queryManagerConfig = queryManagerConfig;
+        this.downstreamStatsRequestJsonCodec = downstreamStatsRequestJsonCodec;
 
         // Use only 0.75 of the maxResponseSize to leave room for additional bytes from the encoding
         // TODO figure out a better way to compute the size of data that will be transferred over the network
@@ -143,6 +150,7 @@ public class ExchangeClientFactory
                 systemMemoryContext,
                 pageBufferClientCallbackExecutor,
                 queryManagerConfig.isEnableGracefulShutdown(),
-                queryManagerConfig.isEnableRetryForFailedSplits());
+                queryManagerConfig.isEnableRetryForFailedSplits(),
+                downstreamStatsRequestJsonCodec);
     }
 }

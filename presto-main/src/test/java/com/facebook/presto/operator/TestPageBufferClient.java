@@ -102,7 +102,7 @@ public class TestPageBufferClient
 
         URI location = URI.create("http://localhost:8080");
         PageBufferClient client = new PageBufferClient(
-                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location),
+                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location, null),
                 new Duration(1, TimeUnit.MINUTES),
                 true,
                 location,
@@ -188,7 +188,7 @@ public class TestPageBufferClient
 
         URI location = URI.create("http://localhost:8080");
         PageBufferClient client = new PageBufferClient(
-                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location),
+                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location, null),
                 new Duration(1, TimeUnit.MINUTES),
                 true,
                 location,
@@ -229,7 +229,7 @@ public class TestPageBufferClient
 
         URI location = URI.create("http://localhost:8080");
         PageBufferClient client = new PageBufferClient(
-                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location),
+                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location, null),
                 new Duration(1, TimeUnit.MINUTES),
                 true,
                 location,
@@ -298,7 +298,7 @@ public class TestPageBufferClient
 
         URI location = URI.create("http://localhost:8080");
         PageBufferClient client = new PageBufferClient(
-                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location),
+                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location, null),
                 new Duration(1, TimeUnit.MINUTES),
                 true,
                 location,
@@ -353,7 +353,7 @@ public class TestPageBufferClient
 
         URI location = URI.create("http://localhost:8080");
         PageBufferClient client = new PageBufferClient(
-                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location),
+                new HttpRpcShuffleClient(new TestingHttpClient(processor, scheduler), location, null),
                 new Duration(30, TimeUnit.SECONDS),
                 true,
                 location,
@@ -503,6 +503,12 @@ public class TestPageBufferClient
             failedBuffers.getAndIncrement();
             failure.compareAndSet(null, cause);
             // requestComplete() will be called after this
+        }
+
+        @Override
+        public long getBufferRetainedSizeInBytes()
+        {
+            return 0;
         }
 
         public void resetStats()

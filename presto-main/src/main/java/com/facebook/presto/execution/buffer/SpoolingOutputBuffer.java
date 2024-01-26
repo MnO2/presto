@@ -19,6 +19,8 @@ import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
+import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.page.PageDataOutput;
 import com.facebook.presto.spi.page.SerializedPage;
@@ -49,9 +51,12 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.execution.buffer.BufferResult.emptyResults;
 import static com.facebook.presto.execution.buffer.BufferState.FINISHED;
@@ -117,6 +122,9 @@ public class SpoolingOutputBuffer
 
     @GuardedBy("this")
     private PendingRead pendingRead;
+
+    @GuardedBy("this")
+    private final ConcurrentMap<OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
 
     public SpoolingOutputBuffer(
             TaskId taskId,
@@ -285,6 +293,19 @@ public class SpoolingOutputBuffer
         totalStorageBytesAdded.addAndGet(bytes);
         totalStoragePagesAdded.addAndGet(pageCount);
         totalInMemoryBytes.set(0);
+    }
+
+    @Override
+    public void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+    {
+        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed, downstreamStatsRequest.bufferRetainedSizeInBytes, System.currentTimeMillis(), downstreamStatsRequest.clientSentTime);
+        downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
+    }
+
+    @Override
+    public List<DownstreamStats> getDownstreamStats()
+    {
+        return downstreamStats.values().stream().collect(Collectors.toList());
     }
 
     @Override

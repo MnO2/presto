@@ -27,11 +27,13 @@ import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.TaskManagerConfig.TaskPriorityTracking;
 import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.operator.scalar.JoniRegexpFunctions;
+import com.facebook.presto.server.DownstreamStats;
 import com.facebook.presto.server.ServerConfig;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.testing.TestingEventListenerManager;
 import com.facebook.presto.version.EmbedVersion;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Ticker;
 import com.google.common.cache.CacheBuilder;
@@ -247,6 +249,10 @@ public class TaskExecutor
 
     public AtomicBoolean getNoTaskAtGracefulShutdown()
     {
+        if (!enableGracefulShutdown && !enableRetryForFailedSplits) {
+            return new AtomicBoolean(false);
+        }
+
         checkState(enableGracefulShutdown || enableRetryForFailedSplits, "getNoTaskAtGracefulShutdown should only be called when enableGracefulShutdown or enableRetryForFailedSplits is set to true");
         return noTaskAtGracefulShutdown;
     }
@@ -280,12 +286,13 @@ public class TaskExecutor
         //before killing the tasks,  make sure output buffer data is consumed.
         CountDownLatch latch = new CountDownLatch(currentTasksSnapshot.size());
         log.warn("GracefulShutdown:: Going to shutdown %s tasks", currentTasksSnapshot.size());
+        ObjectMapper mapper = new ObjectMapper();
         for (TaskHandle taskHandle : currentTasksSnapshot) {
             taskShutdownExecutor.execute(
                     () -> {
                         TaskId taskId = taskHandle.getTaskId();
                         log.info("Before trackPreemptionLifeCycle test");
-                        eventListenerManager.trackPreemptionLifeCycle(taskId, QueryRecoveryState.INIT_GRACEFUL_PREEMPTION);
+                        eventListenerManager.trackPreemptionLifeCycle(taskId, QueryRecoveryState.INIT_GRACEFUL_PREEMPTION, "");
                         log.info("After trackPreemptionLifeCycle test");
                         if (!taskHandle.getOutputBuffer().isPresent()) {
                             log.info("No output buffer for task %s", taskId);
@@ -302,7 +309,7 @@ public class TaskExecutor
                             log.info("Output buffer for task %s= %s", taskId, taskHandle.getOutputBuffer().get().getInfo());
 
                             while (!taskHandle.isTotalRunningSplitEmpty()) {
-                                eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_RUNNING_SPLITS);
+                                eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_RUNNING_SPLITS, "");
                                 checkState(!taskHandle.isTaskDone(), "Task is done while waiting for total running split empty");
                                 try {
                                     long currentTime = System.currentTimeMillis();
@@ -333,9 +340,11 @@ public class TaskExecutor
                             startTime = System.nanoTime();
                             while (!taskHandle.isOutputBufferEmpty()) {
                                 try {
-                                    eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER);
+                                    List<DownstreamStats> downstreamStats = taskHandle.getDownstreamStats();
+                                    eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, mapper.writeValueAsString(downstreamStats));
+                                    eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, outputBuffer.getInfo(), mapper);
                                     log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s", taskId, outputBuffer.getInfo());
-                                    Thread.sleep(waitTimeMillis);
+                                    Thread.sleep(5000);
                                 }
                                 catch (InterruptedException e) {
                                     log.error(e, "GracefulShutdown got interrupted for task %s", taskId);
@@ -343,7 +352,7 @@ public class TaskExecutor
                             }
                             outputBufferEmptyWaitTime.add(Duration.nanosSince(startTime));
                             log.warn("GracefulShutdown:: calling handleShutDown for task- %s, buffer info : %s", taskId, outputBuffer.getInfo());
-                            eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.INITIATE_HANDLE_SHUTDOWN);
+                            eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.INITIATE_HANDLE_SHUTDOWN, "");
                             taskHandle.handleShutDown();
                         }
                         catch (Throwable ex) {

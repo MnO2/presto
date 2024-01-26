@@ -20,6 +20,8 @@ import com.facebook.presto.execution.buffer.BufferState;
 import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.execution.buffer.OutputBuffers;
+import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
@@ -62,6 +64,18 @@ public class TestingOutputBuffer
 
     @Override
     public void setOutputBuffers(OutputBuffers newOutputBuffers)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void updateDownStreamStats(OutputBuffers.OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<DownstreamStats> getDownstreamStats()
     {
         throw new UnsupportedOperationException();
     }

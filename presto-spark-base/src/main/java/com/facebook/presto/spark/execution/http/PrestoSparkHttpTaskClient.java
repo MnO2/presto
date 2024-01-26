@@ -29,6 +29,7 @@ import com.facebook.presto.execution.scheduler.TableWriteInfo;
 import com.facebook.presto.operator.HttpRpcShuffleClient;
 import com.facebook.presto.operator.PageBufferClient;
 import com.facebook.presto.operator.RpcShuffleClient;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.server.TaskUpdateRequest;
 import com.facebook.presto.server.smile.BaseResponse;
 import com.facebook.presto.spi.security.TokenAuthenticator;
@@ -118,6 +119,11 @@ public class PrestoSparkHttpTaskClient
                         .setUri(uri)
                         .build(),
                 new HttpRpcShuffleClient.PageResponseHandler(false, false));
+    }
+
+    @Override
+    public void sendDownstreamStats(DownstreamStatsRequest downstreamStatsRequest)
+    {
     }
 
     @Override

@@ -296,6 +296,19 @@ public class TaskResource
         return taskInfo;
     }
 
+    @POST
+    @Path("{taskId}/results/{bufferId}")
+    @Consumes({APPLICATION_JSON, APPLICATION_JACKSON_SMILE})
+    public Response updateDownStreamStats(@PathParam("taskId") TaskId taskId, @PathParam("bufferId") OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest, @Context UriInfo uriInfo)
+    {
+        requireNonNull(downstreamStatsRequest, "downstreamStatsRequest is null");
+
+        taskManager.updateDownStreamStats(taskId, downstreamStatsRequest.bufferId, downstreamStatsRequest);
+
+        return Response.ok().build();
+    }
+
+    @GET
     @Path("{taskId}/results/{bufferId}/{token}/acknowledge")
     public void acknowledgeResults(
             @PathParam("taskId") TaskId taskId,

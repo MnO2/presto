@@ -26,6 +26,7 @@ import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.scheduler.TableWriteInfo;
 import com.facebook.presto.memory.MemoryPoolAssignmentsRequest;
 import com.facebook.presto.metadata.MetadataUpdates;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
@@ -92,6 +93,12 @@ public class PrestoSparkTaskManager
 
     @Override
     public TaskInfo abortTask(TaskId taskId)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void updateDownStreamStats(TaskId taskId, OutputBuffers.OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
     {
         throw new UnsupportedOperationException();
     }

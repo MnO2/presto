@@ -19,8 +19,10 @@ import com.facebook.airlift.http.client.Request;
 import com.facebook.airlift.http.client.Response;
 import com.facebook.airlift.http.client.ResponseHandler;
 import com.facebook.airlift.http.client.ResponseTooLargeException;
+import com.facebook.airlift.json.JsonCodec;
 import com.facebook.airlift.log.Logger;
 import com.facebook.presto.operator.PageBufferClient.PagesResponse;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.annotations.VisibleForTesting;
@@ -43,7 +45,9 @@ import static com.facebook.airlift.http.client.HttpStatus.familyForStatusCode;
 import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static com.facebook.airlift.http.client.Request.Builder.prepareDelete;
 import static com.facebook.airlift.http.client.Request.Builder.prepareGet;
+import static com.facebook.airlift.http.client.Request.Builder.preparePost;
 import static com.facebook.airlift.http.client.ResponseHandlerUtils.propagate;
+import static com.facebook.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
 import static com.facebook.airlift.http.client.StatusResponseHandler.createStatusResponseHandler;
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES_TYPE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
@@ -54,6 +58,7 @@ import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_TOKEN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_TASK_INSTANCE_ID;
 import static com.facebook.presto.operator.PageBufferClient.PagesResponse.createEmptyPagesResponse;
 import static com.facebook.presto.operator.PageBufferClient.PagesResponse.createPagesResponse;
+import static com.facebook.presto.server.RequestHelpers.setContentTypeHeaders;
 import static com.facebook.presto.spi.page.PagesSerdeUtil.readSerializedPages;
 import static com.google.common.net.HttpHeaders.CONTENT_TYPE;
 import static java.lang.String.format;
@@ -70,19 +75,21 @@ public final class HttpRpcShuffleClient
     private final URI location;
     private final boolean isEnableGracefulShutdown;
     private final boolean isEnableRetryForFailedSplits;
+    private final JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec;
 
     @VisibleForTesting
-    public HttpRpcShuffleClient(HttpClient httpClient, URI location)
+    public HttpRpcShuffleClient(HttpClient httpClient, URI location, JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
     {
-        this(httpClient, location, false, false);
+        this(httpClient, location, false, false, downstreamStatsRequestJsonCodec);
     }
 
-    public HttpRpcShuffleClient(HttpClient httpClient, URI location, boolean isEnableGracefulShutdown, boolean isEnableRetryForFailedSplits)
+    public HttpRpcShuffleClient(HttpClient httpClient, URI location, boolean isEnableGracefulShutdown, boolean isEnableRetryForFailedSplits, JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
     {
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.location = requireNonNull(location, "location is null");
         this.isEnableGracefulShutdown = isEnableGracefulShutdown;
         this.isEnableRetryForFailedSplits = isEnableRetryForFailedSplits;
+        this.downstreamStatsRequestJsonCodec = downstreamStatsRequestJsonCodec;
     }
 
     @Override
@@ -94,6 +101,36 @@ public final class HttpRpcShuffleClient
                         .setHeader(PRESTO_MAX_SIZE, maxResponseSize.toString())
                         .setUri(uri).build(),
                 new PageResponseHandler(isEnableGracefulShutdown, isEnableRetryForFailedSplits));
+    }
+
+    @Override
+    public void sendDownstreamStats(DownstreamStatsRequest downstreamStatsRequest)
+    {
+        byte[] downstreamStatsRequestJson = downstreamStatsRequestJsonCodec.toBytes(downstreamStatsRequest);
+
+        Request request = setContentTypeHeaders(false, preparePost())
+                .setUri(location)
+                .setBodyGenerator(createStaticBodyGenerator(downstreamStatsRequestJson))
+                .build();
+        httpClient.executeAsync(request, new ResponseHandler<Void, RuntimeException>()
+        {
+            @Override
+            public Void handleException(Request request, Exception exception)
+            {
+                log.debug(exception, "sendDownstreamStats request failed");
+                return null;
+            }
+
+            @Override
+            public Void handle(Request request, Response response)
+            {
+                if (familyForStatusCode(response.getStatusCode()) != HttpStatus.Family.SUCCESSFUL) {
+                    log.debug("Unexpected sendDownstreamStats response code: %s", response.getStatusCode());
+                }
+                return null;
+            }
+        });
+//        httpClient.executeAsync(request, createStatusResponseHandler());
     }
 
     @Override

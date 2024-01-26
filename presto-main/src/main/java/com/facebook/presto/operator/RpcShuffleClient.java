@@ -14,6 +14,7 @@
 package com.facebook.presto.operator;
 
 import com.facebook.presto.operator.PageBufferClient.PagesResponse;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 
@@ -24,6 +25,7 @@ public interface RpcShuffleClient
 {
     ListenableFuture<PagesResponse> getResults(long token, DataSize maxResponseSize);
 
+    void sendDownstreamStats(DownstreamStatsRequest downstreamStatsRequest);
     /**
      * A fire and forget call to issue the ack to the buffer.
      * No need to handle the response; it is ok for a server to miss the ack.

@@ -20,6 +20,8 @@ import com.facebook.presto.execution.buffer.ClientBuffer.PagesSupplier;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.buffer.SerializedPageReference.PagesReleasedListener;
 import com.facebook.presto.memory.context.LocalMemoryContext;
+import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
@@ -43,6 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.execution.buffer.BufferState.FAILED;
 import static com.facebook.presto.execution.buffer.BufferState.FINISHED;
@@ -73,6 +76,8 @@ public class ArbitraryOutputBuffer
 
     @GuardedBy("this")
     private final ConcurrentMap<OutputBufferId, ClientBuffer> buffers = new ConcurrentHashMap<>();
+    @GuardedBy("this")
+    private final ConcurrentMap<OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
 
     //  The index of the first client buffer that should be polled
     private final AtomicInteger nextClientBufferIndex = new AtomicInteger(0);
@@ -202,6 +207,19 @@ public class ArbitraryOutputBuffer
         }
 
         checkFlushComplete();
+    }
+
+    @Override
+    public void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+    {
+        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed, downstreamStatsRequest.bufferRetainedSizeInBytes, System.currentTimeMillis(), downstreamStatsRequest.clientSentTime);
+        downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
+    }
+
+    @Override
+    public List<DownstreamStats> getDownstreamStats()
+    {
+        return downstreamStats.values().stream().collect(Collectors.toList());
     }
 
     @Override

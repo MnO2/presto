@@ -15,14 +15,21 @@ package com.facebook.presto.execution.buffer;
 
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.StateMachine;
+import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 
+import javax.annotation.concurrent.GuardedBy;
+
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.execution.buffer.BufferState.FAILED;
 import static com.facebook.presto.execution.buffer.BufferState.FINISHED;
@@ -41,6 +48,9 @@ public class DiscardingOutputBuffer
 
     private final AtomicLong totalPagesAdded = new AtomicLong();
     private final AtomicLong totalRowsAdded = new AtomicLong();
+
+    @GuardedBy("this")
+    private final ConcurrentMap<OutputBuffers.OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
 
     public DiscardingOutputBuffer(OutputBuffers outputBuffers, StateMachine<BufferState> state)
     {
@@ -104,6 +114,18 @@ public class DiscardingOutputBuffer
         outputBuffers.checkValidTransition(newOutputBuffers);
     }
 
+    @Override
+    public void updateDownStreamStats(OutputBuffers.OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+    {
+        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed, downstreamStatsRequest.bufferRetainedSizeInBytes, System.currentTimeMillis(), downstreamStatsRequest.clientSentTime);
+        downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
+    }
+
+    @Override
+    public List<DownstreamStats> getDownstreamStats()
+    {
+        return downstreamStats.values().stream().collect(Collectors.toList());
+    }
     @Override
     public ListenableFuture<BufferResult> get(OutputBuffers.OutputBufferId bufferId, long token, DataSize maxSize)
     {

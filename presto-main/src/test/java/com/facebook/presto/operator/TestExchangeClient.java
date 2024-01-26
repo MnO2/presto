@@ -565,6 +565,7 @@ public class TestExchangeClient
                 new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext(), "test"),
                 pageBufferClientCallbackExecutor,
                 false,
-                false);
+                false,
+                null);
     }
 }

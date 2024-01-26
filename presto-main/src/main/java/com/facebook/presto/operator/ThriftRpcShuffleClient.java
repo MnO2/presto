@@ -19,6 +19,7 @@ import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.buffer.ThriftBufferResult;
 import com.facebook.presto.operator.PageBufferClient.PagesResponse;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.server.thrift.ThriftTaskClient;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -68,6 +69,11 @@ public final class ThriftRpcShuffleClient
                         result.isBufferComplete(),
                         false),
                 directExecutor());
+    }
+
+    @Override
+    public void sendDownstreamStats(DownstreamStatsRequest downstreamStatsRequest)
+    {
     }
 
     @Override

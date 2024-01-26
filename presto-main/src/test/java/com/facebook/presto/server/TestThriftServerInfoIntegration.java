@@ -221,6 +221,12 @@ public class TestThriftServerInfoIntegration
                 }
 
                 @Override
+                public void updateDownStreamStats(TaskId taskId, OutputBuffers.OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+                {
+                    throw new UnsupportedOperationException();
+                }
+
+                @Override
                 public ListenableFuture<BufferResult> getTaskResults(TaskId taskId, OutputBufferId bufferId, long startingSequenceId, DataSize maxSize)
                 {
                     throw new UnsupportedOperationException();

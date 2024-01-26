@@ -39,6 +39,7 @@ import com.facebook.presto.metadata.MetadataUpdates;
 import com.facebook.presto.operator.ExchangeClientSupplier;
 import com.facebook.presto.operator.FragmentResultCacheManager;
 import com.facebook.presto.operator.TaskMemoryReservationSummary;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.server.ServerConfig;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
@@ -445,6 +446,14 @@ public class SqlTaskManager
         for (ConnectorMetadataUpdater metadataUpdater : metadataContext.getMetadataUpdaters()) {
             metadataUpdater.setMetadataUpdateResults(metadataUpdates.getMetadataUpdates());
         }
+    }
+
+    @Override
+    public void updateDownStreamStats(TaskId taskId, OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+    {
+        requireNonNull(taskId, "taskId is null");
+        requireNonNull(bufferId, "bufferId is null");
+        tasks.getUnchecked(taskId).updateDownStreamStats(bufferId, downstreamStatsRequest);
     }
 
     @Override

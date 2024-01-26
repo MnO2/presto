@@ -531,6 +531,7 @@ public class ServerMainModule
         jsonCodecBinder(binder).bindJsonCodec(SqlInvokedFunction.class);
         jsonCodecBinder(binder).bindJsonCodec(TaskSource.class);
         jsonCodecBinder(binder).bindJsonCodec(TableWriteInfo.class);
+        jsonCodecBinder(binder).bindJsonCodec(DownstreamStatsRequest.class);
         smileCodecBinder(binder).bindSmileCodec(TaskStatus.class);
         smileCodecBinder(binder).bindSmileCodec(TaskInfo.class);
 

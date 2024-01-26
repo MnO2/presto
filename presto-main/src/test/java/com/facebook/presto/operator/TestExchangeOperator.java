@@ -98,7 +98,8 @@ public class TestExchangeOperator
                 systemMemoryUsageListener,
                 pageBufferClientCallbackExecutor,
                 false,
-                false);
+                false,
+                null);
     }
 
     @AfterClass(alwaysRun = true)

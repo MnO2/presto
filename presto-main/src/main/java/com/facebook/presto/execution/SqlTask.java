@@ -33,6 +33,7 @@ import com.facebook.presto.operator.PipelineStatus;
 import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.operator.TaskExchangeClientManager;
 import com.facebook.presto.operator.TaskStats;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.ConnectorMetadataUpdateHandle;
 import com.facebook.presto.spi.NodePoolType;
@@ -517,6 +518,12 @@ public class SqlTask
     public TaskMetadataContext getTaskMetadataContext()
     {
         return taskHolderReference.get().taskExecution.getTaskContext().getTaskMetadataContext();
+    }
+
+    public void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
+    {
+        requireNonNull(bufferId, "bufferId is null");
+        outputBuffer.updateDownStreamStats(bufferId, downstreamStatsRequest);
     }
 
     public ListenableFuture<BufferResult> getTaskResults(OutputBufferId bufferId, long startingSequenceId, DataSize maxSize)

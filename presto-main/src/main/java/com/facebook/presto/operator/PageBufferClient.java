@@ -15,6 +15,8 @@ package com.facebook.presto.operator;
 
 import com.facebook.airlift.http.client.HttpUriBuilder;
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.execution.buffer.OutputBuffers;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.server.remotetask.Backoff;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
@@ -33,6 +35,9 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.io.Closeable;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
 import java.net.URI;
 import java.util.List;
 import java.util.OptionalInt;
@@ -81,6 +86,8 @@ public final class PageBufferClient
         void clientFinished(PageBufferClient client);
 
         void clientFailed(PageBufferClient client, Throwable cause);
+
+        long getBufferRetainedSizeInBytes();
     }
 
     private final RpcShuffleClient resultClient;
@@ -118,6 +125,7 @@ public final class PageBufferClient
     private final AtomicInteger requestsFailed = new AtomicInteger();
 
     private final Executor pageBufferClientCallbackExecutor;
+    private static final MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
 
     public PageBufferClient(
             RpcShuffleClient resultClient,
@@ -266,6 +274,30 @@ public final class PageBufferClient
         }
 
         lastUpdate = DateTime.now();
+    }
+
+    public void startDownstreamStatsPeriodicUpdate()
+    {
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                String[] paths = location.getPath().split("/");
+                OutputBuffers.OutputBufferId outputBufferId = OutputBuffers.OutputBufferId.fromString(paths[paths.length-1]);
+                MemoryUsage memoryUsage = memoryMXBean.getHeapMemoryUsage();
+
+                long heapMemoryUsed = memoryUsage.getUsed();
+                long bufferRetainedSizeInBytes = clientCallback.getBufferRetainedSizeInBytes();
+                DownstreamStatsRequest downstreamStatsRequest = new DownstreamStatsRequest(outputBufferId, heapMemoryUsed, bufferRetainedSizeInBytes, System.currentTimeMillis());
+                sendDownstreamStats(downstreamStatsRequest);
+            }
+            catch (Throwable t) {
+                log.error(t);
+            }
+        }, 5, 5, SECONDS);
+    }
+
+    public void sendDownstreamStats(DownstreamStatsRequest downstreamStatsRequest)
+    {
+        resultClient.sendDownstreamStats(downstreamStatsRequest);
     }
 
     private synchronized void sendGetResults(DataSize maxResponseSize)

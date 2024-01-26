@@ -15,6 +15,8 @@ package com.facebook.presto.eventlistener;
 
 import com.facebook.airlift.log.Logger;
 import com.facebook.presto.execution.TaskId;
+import com.facebook.presto.execution.buffer.BufferInfo;
+import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.execution.executor.QueryRecoveryState;
 import com.facebook.presto.spi.classloader.ThreadContextClassLoader;
 import com.facebook.presto.spi.eventlistener.EventListener;
@@ -24,12 +26,14 @@ import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryCreatedEvent;
 import com.facebook.presto.spi.eventlistener.QueryUpdatedEvent;
 import com.facebook.presto.spi.eventlistener.SplitCompletedEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import org.joda.time.DateTime;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -125,10 +129,24 @@ public class EventListenerManager
                 .ifPresent(eventListener -> eventListener.splitCompleted(splitCompletedEvent));
     }
 
-    public void trackPreemptionLifeCycle(TaskId taskId, QueryRecoveryState queryRecoveryState)
+    public void trackPreemptionLifeCycle(TaskId taskId, QueryRecoveryState queryRecoveryState, String downstreamStatsJson)
     {
         if (configuredEventListener.get().isPresent()) {
-            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name()));
+            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name(), "", "", downstreamStatsJson));
+        }
+    }
+
+    public void trackOutputBufferInfo(TaskId taskId, QueryRecoveryState queryRecoveryState, OutputBufferInfo outputBufferInfo, ObjectMapper mapper)
+    {
+        if (configuredEventListener.get().isPresent()) {
+            List<BufferInfo> bufferInfoList = outputBufferInfo.getBuffers();
+            for (BufferInfo bufferInfo : bufferInfoList) {
+                try {
+                    configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name(), bufferInfo.getBufferId().toString(), "", mapper.writeValueAsString(bufferInfo.getPageBufferInfo().getBufferedBytes())));
+                }
+                catch (Exception e) {
+                }
+            }
         }
     }
 }

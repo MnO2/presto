@@ -21,6 +21,7 @@ import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.scheduler.TableWriteInfo;
 import com.facebook.presto.memory.MemoryPoolAssignmentsRequest;
 import com.facebook.presto.metadata.MetadataUpdates;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
@@ -104,6 +105,7 @@ public interface TaskManager
      */
     TaskInfo abortTask(TaskId taskId);
 
+    void updateDownStreamStats(TaskId taskId, OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest);
     /**
      * Gets results from a task either immediately or in the future.  If the
      * task or buffer has not been created yet, an uninitialized task is

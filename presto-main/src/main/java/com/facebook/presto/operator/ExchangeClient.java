@@ -14,12 +14,14 @@
 package com.facebook.presto.operator;
 
 import com.facebook.airlift.http.client.HttpClient;
+import com.facebook.airlift.json.JsonCodec;
 import com.facebook.airlift.log.Logger;
 import com.facebook.drift.client.DriftClient;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.PageBufferClient.ClientCallback;
 import com.facebook.presto.operator.WorkProcessor.ProcessState;
+import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.server.thrift.ThriftTaskClient;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.page.PageCodecMarker;
@@ -126,6 +128,7 @@ public class ExchangeClient
     private final Executor pageBufferClientCallbackExecutor;
     private final boolean isEnableGracefulShutdown;
     private final boolean isEnableRetryForFailedSplits;
+    private final JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec;
 
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
@@ -142,7 +145,8 @@ public class ExchangeClient
             LocalMemoryContext systemMemoryContext,
             Executor pageBufferClientCallbackExecutor,
             boolean isEnableGracefulShutdown,
-            boolean isEnableRetryForFailedSplits)
+            boolean isEnableRetryForFailedSplits,
+            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
     {
         checkArgument(responseSizeExponentialMovingAverageDecayingAlpha >= 0.0 && responseSizeExponentialMovingAverageDecayingAlpha <= 1.0, "responseSizeExponentialMovingAverageDecayingAlpha must be between 0 and 1: %s", responseSizeExponentialMovingAverageDecayingAlpha);
         this.bufferCapacity = bufferCapacity.toBytes();
@@ -159,6 +163,7 @@ public class ExchangeClient
         this.responseSizeExponentialMovingAverage = new ExponentialMovingAverage(responseSizeExponentialMovingAverageDecayingAlpha, DEFAULT_MAX_PAGE_SIZE_IN_BYTES);
         this.isEnableGracefulShutdown = isEnableGracefulShutdown;
         this.isEnableRetryForFailedSplits = isEnableRetryForFailedSplits;
+        this.downstreamStatsRequestJsonCodec = downstreamStatsRequestJsonCodec;
     }
 
     public ExchangeClientStatus getStatus()
@@ -178,6 +183,11 @@ public class ExchangeClient
             }
             return new ExchangeClientStatus(bufferRetainedSizeInBytes, maxBufferRetainedSizeInBytes, responseSizeExponentialMovingAverage.get(), successfulRequests, bufferedPages, noMoreLocations, pageBufferClientStatus);
         }
+    }
+
+    public long getBufferRetainedSizeInBytes()
+    {
+        return bufferRetainedSizeInBytes;
     }
 
     public synchronized void addLocation(URI location, TaskId remoteSourceTaskId)
@@ -206,7 +216,7 @@ public class ExchangeClient
         switch (location.getScheme().toLowerCase(Locale.ENGLISH)) {
             case "http":
             case "https":
-                resultClient = new HttpRpcShuffleClient(httpClient, location, isEnableGracefulShutdown, isEnableRetryForFailedSplits);
+                resultClient = new HttpRpcShuffleClient(httpClient, location, isEnableGracefulShutdown, isEnableRetryForFailedSplits, downstreamStatsRequestJsonCodec);
                 break;
             case "thrift":
                 resultClient = new ThriftRpcShuffleClient(driftClient, location);
@@ -223,6 +233,7 @@ public class ExchangeClient
                 new ExchangeClientCallback(),
                 scheduler,
                 pageBufferClientCallbackExecutor);
+        client.startDownstreamStatsPeriodicUpdate();
         allClients.put(location, client);
         checkState(taskIdToLocationMap.put(remoteSourceTaskId, location) == null, "Duplicate remoteSourceTaskId: " + remoteSourceTaskId);
         queuedClients.add(client);
@@ -551,6 +562,12 @@ public class ExchangeClient
             requireNonNull(cause, "cause is null");
             log.error(cause, "Exchange client failed");
             ExchangeClient.this.clientFailed(client, cause);
+        }
+
+        @Override
+        public long getBufferRetainedSizeInBytes()
+        {
+            return ExchangeClient.this.getBufferRetainedSizeInBytes();
         }
     }
 
