@@ -136,7 +136,7 @@ public class TaskResource
         requireNonNull(taskUpdateRequest, "taskUpdateRequest is null");
 
         if (shutdownHandler.isGracefulShutdownRequested()) {
-            return Response.status(Status.GONE).build();
+            return Response.status(Response.Status.GONE).build();
         }
 
         shutdownHandler.incrementPendingUpdateTaskCount();

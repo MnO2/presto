@@ -74,8 +74,6 @@ public final class HttpRpcShuffleClient
     @VisibleForTesting
     public HttpRpcShuffleClient(HttpClient httpClient, URI location)
     {
-        this.httpClient = requireNonNull(httpClient, "httpClient is null");
-        this.location = requireNonNull(location, "location is null");
         this(httpClient, location, false, false);
     }
 
