@@ -774,12 +774,6 @@ public class SpoolingOutputBuffer
     }
 
     @Override
-    public boolean isAllPagesConsumed()
-    {
-        return pages.isEmpty();
-    }
-
-    @Override
     public boolean forceNoMoreBufferIfPossibleOrKill()
     {
         return state.get() == FLUSHING || state.get() == FINISHED;

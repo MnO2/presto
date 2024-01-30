@@ -184,12 +184,6 @@ public class DiscardingOutputBuffer
     }
 
     @Override
-    public boolean isAllPagesConsumed()
-    {
-        return true;
-    }
-
-    @Override
     public boolean forceNoMoreBufferIfPossibleOrKill()
     {
         return state.get() == FLUSHING || state.get() == FINISHED;

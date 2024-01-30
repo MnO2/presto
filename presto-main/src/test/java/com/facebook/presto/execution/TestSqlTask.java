@@ -1,4 +1,4 @@
-/*
+    /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -88,7 +88,7 @@ public class TestSqlTask
 
     public TestSqlTask()
     {
-        taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker(), false, false);
         taskExecutor.start();
 
         taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));

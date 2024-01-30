@@ -81,7 +81,7 @@ public class TestPrestoSparkTaskExecution
     {
         taskNotificationExecutor = newCachedThreadPool(daemonThreadsNamed("test-executor-%s"));
         scheduledExecutor = newScheduledThreadPool(2, daemonThreadsNamed("test-scheduledExecutor-%s"));
-        taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker(), false, false);
 
         nativeTestSession = testSessionBuilder()
                 .setSystemProperty(NATIVE_EXECUTION_ENABLED, "true")

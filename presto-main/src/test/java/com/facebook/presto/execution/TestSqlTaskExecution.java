@@ -143,7 +143,7 @@ public class TestSqlTaskExecution
     {
         ScheduledExecutorService taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));
         ScheduledExecutorService driverYieldExecutor = newScheduledThreadPool(2, threadsNamed("driver-yield-%s"));
-        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker(), false, false);
         taskExecutor.start();
 
         try {
@@ -319,7 +319,7 @@ public class TestSqlTaskExecution
     {
         ScheduledExecutorService taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));
         ScheduledExecutorService driverYieldExecutor = newScheduledThreadPool(2, threadsNamed("driver-yield-%s"));
-        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker(), false, false);
         taskExecutor.start();
 
         try {
@@ -741,11 +741,6 @@ public class TestSqlTaskExecution
                 }
                 sequenceId += results.getSerializedPages().size();
             }
-        }
-
-        public void assertBufferFail()
-        {
-            assertEquals(outputBuffer.getInfo().getState(), BufferState.FAILED);
         }
 
         public void abort()
@@ -1429,7 +1424,7 @@ public class TestSqlTaskExecution
 
         ScheduledExecutorService taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));
         ScheduledExecutorService driverYieldExecutor = newScheduledThreadPool(2, threadsNamed("driver-yield-%s"));
-        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker(), true, true);
         taskExecutor.start();
 
         try {
@@ -1553,6 +1548,125 @@ public class TestSqlTaskExecution
         }
     }
 
+    @Test(dataProvider = "outputBuffers", invocationCount = 1)
+    public void testGracefulShutdownForSimpleCaseWithAbortion(String outputBufferType)
+            throws Exception
+    {
+        PipelineExecutionStrategy executionStrategy = UNGROUPED_EXECUTION;
+        ScheduledExecutorService shutdownHandler = newSingleThreadScheduledExecutor(threadsNamed("shutdown-handler-%s"));
+
+        ScheduledExecutorService taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));
+        ScheduledExecutorService driverYieldExecutor = newScheduledThreadPool(2, threadsNamed("driver-yield-%s"));
+        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker(), true, true);
+        taskExecutor.start();
+
+        try {
+            TaskStateMachine taskStateMachine = new TaskStateMachine(TASK_ID, taskNotificationExecutor);
+
+            OutputBuffer outputBuffer;
+            if (outputBufferType.equals("PartitionedOutputBuffer")) {
+                outputBuffer = newTestingPartitionedOutputBuffer(taskNotificationExecutor);
+            }
+            else if (outputBufferType.equals("ArbitraryOutputBuffer")) {
+                outputBuffer = newTestingArbitraryOutputBuffer(taskNotificationExecutor);
+            }
+            else {
+                outputBuffer = newTestingBroadcastOutputBuffer(taskNotificationExecutor);
+            }
+
+            OutputBufferConsumer outputBufferConsumer = new OutputBufferConsumer(outputBuffer, OUTPUT_BUFFER_ID);
+
+            TestingScanOperatorFactory testingScanOperatorFactory = new TestingScanOperatorFactory(0, TABLE_SCAN_NODE_ID, ImmutableList.of(VARCHAR));
+            TaskOutputOperatorFactory taskOutputOperatorFactory = new TaskOutputOperatorFactory(
+                    1,
+                    TABLE_SCAN_NODE_ID,
+                    outputBuffer,
+                    Function.identity(),
+                    new PagesSerdeFactory(new BlockEncodingManager(), false));
+            LocalExecutionPlan localExecutionPlan = new LocalExecutionPlan(
+                    ImmutableList.of(new DriverFactory(
+                            0,
+                            true,
+                            true,
+                            ImmutableList.of(testingScanOperatorFactory, taskOutputOperatorFactory),
+                            OptionalInt.empty(),
+                            executionStrategy,
+                            Optional.empty())),
+                    ImmutableList.of(TABLE_SCAN_NODE_ID),
+                    StageExecutionDescriptor.ungroupedExecution());
+            TaskContext taskContext = newTestingTaskContext(taskNotificationExecutor, driverYieldExecutor, taskStateMachine);
+            SqlTaskExecution sqlTaskExecution = SqlTaskExecution.createSqlTaskExecution(
+                    taskStateMachine,
+                    taskContext,
+                    outputBuffer,
+                    ImmutableList.of(),
+                    localExecutionPlan,
+                    taskExecutor,
+                    taskNotificationExecutor,
+                    createTestSplitMonitor());
+
+            //
+            // test body
+            assertEquals(taskStateMachine.getState(), TaskState.RUNNING);
+
+            // add source for pipeline
+            sqlTaskExecution.addSources(ImmutableList.of(new TaskSource(
+                    TABLE_SCAN_NODE_ID,
+                    ImmutableSet.of(newScheduledSplit(0, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 100000, 123)),
+                    false)));
+            // assert that partial task result is produced
+            outputBufferConsumer.consume(123, ASSERT_WAIT_TIMEOUT);
+
+            // pause operator execution to make sure that
+            // * operatorFactory will be closed even though operator can't execute
+            // * completedDriverGroups will NOT include the newly scheduled driver group while pause is in place
+            testingScanOperatorFactory.getPauser().pause();
+            Random rand = new Random();
+            int upperBound = 500;
+            int lowerBound = 100;
+            int pageCountForSplit1 = rand.nextInt(upperBound - lowerBound) + lowerBound;
+            int pageCountForSplit2 = rand.nextInt(upperBound - lowerBound) + lowerBound;
+
+            // add source for pipeline, mark as no more splits
+            sqlTaskExecution.addSources(ImmutableList.of(new TaskSource(
+                    TABLE_SCAN_NODE_ID,
+                    ImmutableSet.of(
+                            newScheduledSplit(1, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 200000, pageCountForSplit1),
+                            newScheduledSplit(2, TABLE_SCAN_NODE_ID, Lifespan.taskWide(), 300000, pageCountForSplit2)),
+                    true)));
+            // assert that pipeline will have no more drivers
+            waitUntilEquals(testingScanOperatorFactory::isOverallNoMoreOperators, true, ASSERT_WAIT_TIMEOUT);
+            // assert that no DriverGroup is fully completed
+            assertEquals(taskContext.getCompletedDriverGroups(), ImmutableSet.of());
+
+            shutdownHandler.schedule(() -> {
+                taskExecutor.gracefulShutdown();
+            }, 1, MILLISECONDS);
+
+            waitUntilEquals(taskExecutor::isShuttingDownStarted, true, ASSERT_WAIT_TIMEOUT);
+
+            // resume operator execution
+            testingScanOperatorFactory.getPauser().resume();
+
+            // assert that task result is produced
+            outputBufferConsumer.consume(pageCountForSplit1 + pageCountForSplit2, ASSERT_WAIT_TIMEOUT);
+            outputBuffer.forceNoMoreBufferIfPossibleOrKill();
+
+            // don't call assertBufferComplete and make buffer still has data
+            outputBufferConsumer.abort(); // simulate the downstream worker abort the work
+
+            waitUntilEquals(taskExecutor::getIsGracefulShutdownFinished, true, ASSERT_WAIT_TIMEOUT);
+
+            TaskState taskState = taskStateMachine.getStateChange(TaskState.RUNNING).get(10, SECONDS);
+            assertEquals(taskState, TaskState.GRACEFUL_SHUTDOWN);
+        }
+        finally {
+            taskExecutor.stop();
+            taskNotificationExecutor.shutdownNow();
+            driverYieldExecutor.shutdown();
+        }
+    }
+
     @Test(dataProvider = "outputBuffers", invocationCount = 10)
     public void testGracefulShutdownForComplexCase(String outputBufferType)
             throws Exception
@@ -1561,7 +1675,7 @@ public class TestSqlTaskExecution
         PipelineExecutionStrategy executionStrategy = UNGROUPED_EXECUTION;
         ScheduledExecutorService taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));
         ScheduledExecutorService driverYieldExecutor = newScheduledThreadPool(2, threadsNamed("driver-yield-%s"));
-        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        TaskExecutor taskExecutor = new TaskExecutor(5, 10, 3, 4, TASK_FAIR, Ticker.systemTicker(), true, true);
         taskExecutor.start();
 
         try {

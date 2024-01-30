@@ -81,7 +81,7 @@ public class TestHighMemoryTaskKiller
 
     public TestHighMemoryTaskKiller()
     {
-        taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker(), false, false);
         taskExecutor.start();
 
         taskNotificationExecutor = newScheduledThreadPool(10, threadsNamed("task-notification-%s"));

@@ -138,7 +138,5 @@ public interface OutputBuffer
      */
     long getPeakMemoryUsage();
 
-    boolean isAllPagesConsumed();
-
     boolean forceNoMoreBufferIfPossibleOrKill();
 }

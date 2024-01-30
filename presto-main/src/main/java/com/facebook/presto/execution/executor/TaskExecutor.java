@@ -360,7 +360,9 @@ public class TaskExecutor
             int guaranteedNumberOfDriversPerTask,
             int maximumNumberOfDriversPerTask,
             TaskPriorityTracking taskPriorityTracking,
-            Ticker ticker)
+            Ticker ticker,
+            boolean enableGracefulShutdown,
+            boolean enableRetryForFailedSplits)
     {
         this(
                 runnerThreads,
@@ -374,8 +376,8 @@ public class TaskExecutor
                 new EmbedVersion(new ServerConfig()),
                 new MultilevelSplitQueue(2),
                 ticker,
-                false,
-                false);
+                enableGracefulShutdown,
+                enableRetryForFailedSplits);
     }
 
     @VisibleForTesting
