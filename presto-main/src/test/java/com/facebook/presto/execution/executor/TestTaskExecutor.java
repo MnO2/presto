@@ -73,7 +73,7 @@ public class TestTaskExecutor
             throws Exception
     {
         TestingTicker ticker = new TestingTicker();
-        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, TASK_FAIR, ticker);
+        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, TASK_FAIR, ticker, false, false);
         taskExecutor.start();
         ticker.increment(20, MILLISECONDS);
 
@@ -167,7 +167,7 @@ public class TestTaskExecutor
     public void testQuantaFairness()
     {
         TestingTicker ticker = new TestingTicker();
-        TaskExecutor taskExecutor = new TaskExecutor(1, 2, 3, 4, QUERY_FAIR, ticker);
+        TaskExecutor taskExecutor = new TaskExecutor(1, 2, 3, 4, QUERY_FAIR, ticker, false, false);
         taskExecutor.start();
         ticker.increment(20, MILLISECONDS);
 
@@ -201,7 +201,7 @@ public class TestTaskExecutor
     public void testLevelMovement()
     {
         TestingTicker ticker = new TestingTicker();
-        TaskExecutor taskExecutor = new TaskExecutor(2, 2, 3, 4, TASK_FAIR, ticker);
+        TaskExecutor taskExecutor = new TaskExecutor(2, 2, 3, 4, TASK_FAIR, ticker, false, false);
         taskExecutor.start();
         ticker.increment(20, MILLISECONDS);
 
@@ -324,7 +324,7 @@ public class TestTaskExecutor
     public void testTaskHandle()
     {
         TestingTicker ticker = new TestingTicker();
-        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, QUERY_FAIR, ticker);
+        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, QUERY_FAIR, ticker, false, false);
         taskExecutor.start();
 
         try {
@@ -361,7 +361,7 @@ public class TestTaskExecutor
             throws InterruptedException
     {
         TestingTicker ticker = new TestingTicker();
-        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, QUERY_FAIR, ticker);
+        TaskExecutor taskExecutor = new TaskExecutor(4, 8, 3, 4, QUERY_FAIR, ticker, false, false);
         taskExecutor.start();
 
         try {

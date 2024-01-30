@@ -145,12 +145,6 @@ public class TestingOutputBuffer
     }
 
     @Override
-    public boolean isAllPagesConsumed()
-    {
-        return false;
-    }
-
-    @Override
     public boolean forceNoMoreBufferIfPossibleOrKill()
     {
         throw new UnsupportedOperationException();

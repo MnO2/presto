@@ -112,7 +112,7 @@ public class TestMemoryRevokingScheduler
     {
         memoryPool = new MemoryPool(GENERAL_POOL, new DataSize(10, BYTE));
 
-        TaskExecutor taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker());
+        TaskExecutor taskExecutor = new TaskExecutor(8, 16, 3, 4, TASK_FAIR, Ticker.systemTicker(), false, false);
         taskExecutor.start();
 
         // Must be single threaded
