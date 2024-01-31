@@ -281,7 +281,7 @@ public final class PageBufferClient
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 String[] paths = location.getPath().split("/");
-                OutputBuffers.OutputBufferId outputBufferId = OutputBuffers.OutputBufferId.fromString(paths[paths.length-1]);
+                OutputBuffers.OutputBufferId outputBufferId = OutputBuffers.OutputBufferId.fromString(paths[paths.length - 1]);
                 MemoryUsage memoryUsage = memoryMXBean.getHeapMemoryUsage();
 
                 long heapMemoryUsed = memoryUsage.getUsed();
