@@ -27,7 +27,7 @@ import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.TaskManagerConfig.TaskPriorityTracking;
 import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.operator.scalar.JoniRegexpFunctions;
-import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRecords;
 import com.facebook.presto.server.ServerConfig;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
@@ -340,10 +340,11 @@ public class TaskExecutor
                             startTime = System.nanoTime();
                             while (!taskHandle.isOutputBufferEmpty()) {
                                 try {
-                                    List<DownstreamStats> downstreamStats = taskHandle.getDownstreamStats();
-                                    eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, downstreamStats.toString());
+                                    List<DownstreamStatsRecords> downstreamStatsRecords = taskHandle.getDownstreamStats();
+                                    String serializedDownstreamStatsRecords = mapper.writeValueAsString(downstreamStatsRecords);
+                                    eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, serializedDownstreamStatsRecords);
                                     eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, outputBuffer.getInfo(), mapper);
-                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s, downstreamStats = %s", taskId, outputBuffer.getInfo(), downstreamStats.toString());
+                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s, downstreamStats = %s", taskId, outputBuffer.getInfo(), serializedDownstreamStatsRecords);
                                     Thread.sleep(5000);
                                 }
                                 catch (InterruptedException e) {

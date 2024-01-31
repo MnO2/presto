@@ -20,7 +20,7 @@ import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.memory.context.LocalMemoryContext;
-import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRecords;
 import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.collect.ImmutableList;
@@ -209,7 +209,7 @@ public class LazyOutputBuffer
     }
 
     @Override
-    public List<DownstreamStats> getDownstreamStats()
+    public List<DownstreamStatsRecords> getDownstreamStats()
     {
         OutputBuffer outputBuffer = delegate;
         if (outputBuffer != null) {

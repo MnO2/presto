@@ -16,7 +16,7 @@ package com.facebook.presto.execution.buffer;
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
-import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRecords;
 import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -64,7 +64,7 @@ public interface OutputBuffer
 
     void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest);
 
-    List<DownstreamStats> getDownstreamStats();
+    List<DownstreamStatsRecords> getDownstreamStats();
     /**
      * Gets pages from the output buffer, and acknowledges all pages received from the last
      * request.  The initial token is zero. Subsequent tokens are acquired from the

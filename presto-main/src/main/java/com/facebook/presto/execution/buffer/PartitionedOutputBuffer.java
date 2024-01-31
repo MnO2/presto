@@ -19,6 +19,7 @@ import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRecords;
 import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.annotations.VisibleForTesting;
@@ -246,9 +247,9 @@ public class PartitionedOutputBuffer
     }
 
     @Override
-    public List<DownstreamStats> getDownstreamStats()
+    public List<DownstreamStatsRecords> getDownstreamStats()
     {
-        return downstreamStats.values().stream().collect(Collectors.toList());
+        return downstreamStats.values().stream().map(DownstreamStats::toRecord).collect(Collectors.toList());
     }
 
     @Override

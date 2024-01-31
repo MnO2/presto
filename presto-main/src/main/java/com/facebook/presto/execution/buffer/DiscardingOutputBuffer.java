@@ -16,6 +16,7 @@ package com.facebook.presto.execution.buffer;
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRecords;
 import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.page.SerializedPage;
 import com.google.common.collect.ImmutableList;
@@ -122,9 +123,9 @@ public class DiscardingOutputBuffer
     }
 
     @Override
-    public List<DownstreamStats> getDownstreamStats()
+    public List<DownstreamStatsRecords> getDownstreamStats()
     {
-        return downstreamStats.values().stream().collect(Collectors.toList());
+        return downstreamStats.values().stream().map(DownstreamStats::toRecord).collect(Collectors.toList());
     }
     @Override
     public ListenableFuture<BufferResult> get(OutputBuffers.OutputBufferId bufferId, long token, DataSize maxSize)

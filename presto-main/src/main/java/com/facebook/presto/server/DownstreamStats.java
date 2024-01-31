@@ -19,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 
@@ -40,6 +41,11 @@ public class DownstreamStats
         }
 
         entries.add(entry);
+    }
+
+    public DownstreamStatsRecords toRecord()
+    {
+        return new DownstreamStatsRecords(bufferId, entries.stream().collect(Collectors.toList()));
     }
 
     public static class Entry

@@ -17,7 +17,7 @@ import com.facebook.presto.execution.ScheduledSplit;
 import com.facebook.presto.execution.SplitConcurrencyController;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffer;
-import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRecords;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.Duration;
@@ -291,7 +291,7 @@ public class TaskHandle
         return outputBuffer.isPresent() && outputBuffer.get().getInfo().getState().isTerminal();
     }
 
-    public List<DownstreamStats> getDownstreamStats()
+    public List<DownstreamStatsRecords> getDownstreamStats()
     {
         return outputBuffer.get().getDownstreamStats();
     }

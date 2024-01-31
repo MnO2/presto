@@ -20,6 +20,7 @@ import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.server.DownstreamStats;
+import com.facebook.presto.server.DownstreamStatsRecords;
 import com.facebook.presto.server.DownstreamStatsRequest;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.page.PageDataOutput;
@@ -303,9 +304,9 @@ public class SpoolingOutputBuffer
     }
 
     @Override
-    public List<DownstreamStats> getDownstreamStats()
+    public List<DownstreamStatsRecords> getDownstreamStats()
     {
-        return downstreamStats.values().stream().collect(Collectors.toList());
+        return downstreamStats.values().stream().map(DownstreamStats::toRecord).collect(Collectors.toList());
     }
 
     @Override
