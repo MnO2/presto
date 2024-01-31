@@ -556,7 +556,6 @@ public class ArbitraryOutputBuffer
     @Override
     public boolean forceNoMoreBufferIfPossibleOrKill()
     {
-        this.state.compareAndSet(OPEN, NO_MORE_PAGES);
         this.state.compareAndSet(NO_MORE_PAGES, FLUSHING);
 
         return state.get() == FLUSHING || state.get() == FINISHED;
