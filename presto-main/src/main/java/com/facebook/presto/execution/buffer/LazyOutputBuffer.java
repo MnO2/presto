@@ -202,15 +202,21 @@ public class LazyOutputBuffer
     @Override
     public void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
     {
-        OutputBuffer outputBuffer = getDelegateOutputBufferOrFail();
-        outputBuffer.updateDownStreamStats(bufferId, downstreamStatsRequest);
+        OutputBuffer outputBuffer = delegate;
+        if (outputBuffer != null) {
+            outputBuffer.updateDownStreamStats(bufferId, downstreamStatsRequest);
+        }
     }
 
     @Override
     public List<DownstreamStats> getDownstreamStats()
     {
-        OutputBuffer outputBuffer = getDelegateOutputBufferOrFail();
-        return outputBuffer.getDownstreamStats();
+        OutputBuffer outputBuffer = delegate;
+        if (outputBuffer != null) {
+            return outputBuffer.getDownstreamStats();
+        }
+
+        return new ArrayList<>();
     }
 
     @Override
