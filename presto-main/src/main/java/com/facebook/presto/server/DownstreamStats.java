@@ -26,7 +26,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 public class DownstreamStats
 {
     public OutputBuffers.OutputBufferId bufferId;
-    public int maxSize = 10;
+    public int maxSize = 5;
     private final Queue<Entry> entries = new ConcurrentLinkedQueue<>();
 
     public DownstreamStats(OutputBuffers.OutputBufferId bufferId)

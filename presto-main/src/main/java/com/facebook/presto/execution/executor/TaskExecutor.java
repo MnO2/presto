@@ -341,10 +341,8 @@ public class TaskExecutor
                             while (!taskHandle.isOutputBufferEmpty()) {
                                 try {
                                     List<DownstreamStatsRecords> downstreamStatsRecords = taskHandle.getDownstreamStats();
-                                    String serializedDownstreamStatsRecords = mapper.writeValueAsString(downstreamStatsRecords);
-                                    eventListenerManager.trackPreemptionLifeCycle(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, serializedDownstreamStatsRecords);
-                                    eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, outputBuffer.getInfo(), mapper);
-                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s, downstreamStats = %s", taskId, outputBuffer.getInfo(), serializedDownstreamStatsRecords);
+                                    eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, outputBuffer.getInfo(), downstreamStatsRecords, mapper);
+                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s", taskId, outputBuffer.getInfo());
                                     Thread.sleep(5000);
                                 }
                                 catch (InterruptedException e) {
