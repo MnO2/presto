@@ -286,7 +286,7 @@ public class TaskExecutor
         for (BufferInfo bufferInfo : bufferInfoList) {
             try {
                 if (!bufferInfo.isFinished() && bufferInfo.getBufferedPages() > 0) {
-                    Optional<DownstreamStatsRecords> downstreamStatsRecord = downstreamStatsRecordsList.stream().filter(r -> r.getBufferId() == bufferInfo.getBufferId()).findFirst();
+                    Optional<DownstreamStatsRecords> downstreamStatsRecord = downstreamStatsRecordsList.stream().filter(r -> r.getBufferId().equals(bufferInfo.getBufferId())).findFirst();
                     if (downstreamStatsRecord.isPresent()) {
                         BufferInfoWithDownstreamStatsRecord r = new BufferInfoWithDownstreamStatsRecord(bufferInfo, downstreamStatsRecord.get());
                         results.add(r);
