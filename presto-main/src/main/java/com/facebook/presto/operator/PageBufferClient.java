@@ -42,11 +42,14 @@ import java.net.URI;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.spi.HostAddress.fromUri;
 import static com.facebook.presto.spi.StandardErrorCode.REMOTE_BUFFER_CLOSE_FAILED;
@@ -96,6 +99,12 @@ public final class PageBufferClient
     private final ClientCallback clientCallback;
     private final ScheduledExecutorService scheduler;
     private final Backoff backoff;
+    private final Queue<Long> clientGetSentTimes = new ConcurrentLinkedQueue<>();
+    private final Queue<Long> clientGetResponseCalledTimes = new ConcurrentLinkedQueue<>();
+
+    private final Queue<Long> clientDeleteSentTimes = new ConcurrentLinkedQueue<>();
+    private final Queue<Long> clientDeleteResponseCalledTimes = new ConcurrentLinkedQueue<>();
+
 
     @GuardedBy("this")
     private boolean closed;
@@ -286,7 +295,7 @@ public final class PageBufferClient
 
                 long heapMemoryUsed = memoryUsage.getUsed();
                 long bufferRetainedSizeInBytes = clientCallback.getBufferRetainedSizeInBytes();
-                DownstreamStatsRequest downstreamStatsRequest = new DownstreamStatsRequest(outputBufferId, heapMemoryUsed, bufferRetainedSizeInBytes, System.currentTimeMillis());
+                DownstreamStatsRequest downstreamStatsRequest = new DownstreamStatsRequest(outputBufferId, heapMemoryUsed, bufferRetainedSizeInBytes, clientGetSentTimes.stream().collect(Collectors.toList()), clientGetResponseCalledTimes.stream().collect(Collectors.toList()), clientDeleteSentTimes.stream().collect(Collectors.toList()), clientDeleteResponseCalledTimes.stream().collect(Collectors.toList()));
                 sendDownstreamStats(downstreamStatsRequest);
             }
             catch (Throwable t) {
@@ -306,6 +315,7 @@ public final class PageBufferClient
 
         ListenableFuture<PagesResponse> resultFuture = resultClient.getResults(token, maxResponseSize);
 
+        clientGetSentTimes.add(System.currentTimeMillis());
         future = resultFuture;
         Futures.addCallback(resultFuture, new FutureCallback<PagesResponse>()
         {
@@ -314,6 +324,7 @@ public final class PageBufferClient
             {
                 checkNotHoldsLock(this);
 
+                clientGetResponseCalledTimes.add(System.currentTimeMillis());
                 backoff.success();
 
                 List<SerializedPage> pages;
@@ -404,6 +415,7 @@ public final class PageBufferClient
                 log.debug("Request to %s failed %s", uri, t);
                 checkNotHoldsLock(this);
 
+                clientGetResponseCalledTimes.add(System.currentTimeMillis());
                 t = resultClient.rewriteException(t);
                 if (!(t instanceof PrestoException) && backoff.failure()) {
                     String message = format("%s (%s - %s failures, failure duration %s, total failed request time %s)",
@@ -423,12 +435,15 @@ public final class PageBufferClient
     {
         ListenableFuture<?> resultFuture = resultClient.abortResults();
         future = resultFuture;
+
+        clientDeleteSentTimes.add(System.currentTimeMillis());
         Futures.addCallback(resultFuture, new FutureCallback<Object>()
         {
             @Override
             public void onSuccess(@Nullable Object result)
             {
                 checkNotHoldsLock(this);
+                clientDeleteResponseCalledTimes.add(System.currentTimeMillis());
                 backoff.success();
                 synchronized (PageBufferClient.this) {
                     closed = true;
@@ -445,7 +460,7 @@ public final class PageBufferClient
             public void onFailure(Throwable t)
             {
                 checkNotHoldsLock(this);
-
+                clientDeleteResponseCalledTimes.add(System.currentTimeMillis());
                 log.error(t, "Request to delete %s failed", location);
                 if (!(t instanceof PrestoException) && backoff.failure()) {
                     String message = format("Error closing remote buffer (%s - %s failures, failure duration %s, total failed request time %s)",

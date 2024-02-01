@@ -37,7 +37,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
@@ -80,6 +82,8 @@ public class BroadcastOutputBuffer
     private final AtomicLong totalPagesAdded = new AtomicLong();
     private final AtomicLong totalRowsAdded = new AtomicLong();
     private final AtomicLong totalBufferedPages = new AtomicLong();
+    private final Queue<Long> serverGetReceivedTime = new ConcurrentLinkedQueue<>();
+    private final Queue<Long> serverDeleteReceivedTime = new ConcurrentLinkedQueue<>();
 
     public BroadcastOutputBuffer(
             String taskInstanceId,
@@ -267,7 +271,14 @@ public class BroadcastOutputBuffer
     @Override
     public void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
     {
-        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed, downstreamStatsRequest.bufferRetainedSizeInBytes, System.currentTimeMillis(), downstreamStatsRequest.clientSentTime);
+        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed,
+                downstreamStatsRequest.bufferRetainedSizeInBytes,
+                downstreamStatsRequest.getClientGetSentTimes(),
+                serverGetReceivedTime.stream().collect(Collectors.toList()),
+                downstreamStatsRequest.getClientGetResponseCalledTimes(),
+                downstreamStatsRequest.getClientDeleteSentTimes(),
+                serverDeleteReceivedTime.stream().collect(Collectors.toList()),
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 
@@ -284,6 +295,7 @@ public class BroadcastOutputBuffer
         requireNonNull(outputBufferId, "outputBufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
+        serverGetReceivedTime.add(System.currentTimeMillis());
         return getBuffer(outputBufferId).getPages(startingSequenceId, maxSize);
     }
 
@@ -302,6 +314,7 @@ public class BroadcastOutputBuffer
         checkState(!Thread.holdsLock(this), "Can not abort while holding a lock on this");
         requireNonNull(bufferId, "bufferId is null");
 
+        serverDeleteReceivedTime.add(System.currentTimeMillis());
         getBuffer(bufferId).destroy();
 
         checkFlushComplete();

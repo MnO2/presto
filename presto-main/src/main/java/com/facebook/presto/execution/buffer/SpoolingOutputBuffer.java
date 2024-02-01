@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -126,6 +127,8 @@ public class SpoolingOutputBuffer
 
     @GuardedBy("this")
     private final ConcurrentMap<OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
+    private final Queue<Long> serverGetReceivedTime = new ConcurrentLinkedQueue<>();
+    private final Queue<Long> serverDeleteReceivedTime = new ConcurrentLinkedQueue<>();
 
     public SpoolingOutputBuffer(
             TaskId taskId,
@@ -299,7 +302,14 @@ public class SpoolingOutputBuffer
     @Override
     public void updateDownStreamStats(OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
     {
-        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed, downstreamStatsRequest.bufferRetainedSizeInBytes, System.currentTimeMillis(), downstreamStatsRequest.clientSentTime);
+        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed,
+                downstreamStatsRequest.bufferRetainedSizeInBytes,
+                downstreamStatsRequest.getClientGetSentTimes(),
+                serverGetReceivedTime.stream().collect(Collectors.toList()),
+                downstreamStatsRequest.getClientGetResponseCalledTimes(),
+                downstreamStatsRequest.getClientDeleteSentTimes(),
+                serverDeleteReceivedTime.stream().collect(Collectors.toList()),
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 
@@ -315,7 +325,7 @@ public class SpoolingOutputBuffer
         requireNonNull(bufferId, "outputBufferId is null");
         checkArgument(bufferId.getId() == outputBufferId.getId(), "Invalid buffer id");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
-
+        serverGetReceivedTime.add(System.currentTimeMillis());
         acknowledge(bufferId, startSequenceId);
 
         long currentSequenceId = this.currentSequenceId.get();
@@ -551,6 +561,7 @@ public class SpoolingOutputBuffer
     public void abort(OutputBufferId bufferId)
     {
         checkArgument(bufferId.getId() == outputBufferId.getId(), "Invalid bufferId");
+        serverDeleteReceivedTime.add(System.currentTimeMillis());
         destroy();
     }
 

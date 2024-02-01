@@ -17,24 +17,36 @@ import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
+
 public class DownstreamStatsRequest
 {
     public long heapMemoryUsed;
     public long bufferRetainedSizeInBytes;
     public OutputBuffers.OutputBufferId bufferId;
-    public long clientSentTime;
+    public List<Long> clientGetSentTimes;
+    public List<Long> clientGetResponseCalledTimes;
+
+    public List<Long> clientDeleteSentTimes;
+    public List<Long> clientDeleteResponseCalledTimes;
 
     @JsonCreator
     public DownstreamStatsRequest(
             @JsonProperty("bufferId") OutputBuffers.OutputBufferId bufferId,
             @JsonProperty("heapMemoryUsed") long heapMemoryUsed,
             @JsonProperty("bufferRetainedSizeInBytes") long bufferRetainedSizeInBytes,
-            @JsonProperty("clientSentTime") long clientSentTime)
+            @JsonProperty("clientGetSentTimes") List<Long> clientGetSentTimes,
+            @JsonProperty("clientGetResponseCalledTimes") List<Long> clientGetResponseCalledTimes,
+            @JsonProperty("clientDeleteSentTimes") List<Long> clientDeleteSentTimes,
+            @JsonProperty("clientDeleteResponseCalledTimes") List<Long> clientDeleteResponseCalledTimes)
     {
         this.heapMemoryUsed = heapMemoryUsed;
         this.bufferId = bufferId;
-        this.clientSentTime = clientSentTime;
         this.bufferRetainedSizeInBytes = bufferRetainedSizeInBytes;
+        this.clientGetSentTimes = clientGetSentTimes;
+        this.clientGetResponseCalledTimes = clientGetResponseCalledTimes;
+        this.clientDeleteSentTimes = clientDeleteSentTimes;
+        this.clientDeleteResponseCalledTimes = clientDeleteResponseCalledTimes;
     }
 
     @JsonProperty
@@ -56,8 +68,26 @@ public class DownstreamStatsRequest
     }
 
     @JsonProperty
-    public long getClientSentTime()
+    public List<Long> getClientGetSentTimes()
     {
-        return clientSentTime;
+        return clientGetSentTimes;
+    }
+
+    @JsonProperty
+    public List<Long> getClientGetResponseCalledTimes()
+    {
+        return clientGetResponseCalledTimes;
+    }
+
+    @JsonProperty
+    public List<Long> getClientDeleteSentTimes()
+    {
+        return clientDeleteSentTimes;
+    }
+
+    @JsonProperty
+    public List<Long> getClientDeleteResponseCalledTimes()
+    {
+        return clientDeleteResponseCalledTimes;
     }
 }

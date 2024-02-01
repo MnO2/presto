@@ -17,6 +17,7 @@ import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
@@ -52,20 +53,33 @@ public class DownstreamStats
     {
         public long heapMemoryUsed;
         public long bufferRetainedSizeInBytes;
-        public long serverReceivedTime;
-        public long clientSentTime;
+        public List<Long> clientGetSentTimes;
+        public List<Long> serverGetReceivedTimes;
+        public List<Long> clientGetResponseCalledTimes;
+        public List<Long> clientDeleteSentTimes;
+        public List<Long> clientDeleteResponseCalledTimes;
+        public List<Long> serverDeleteReceivedTimes;
 
         @JsonCreator
         public Entry(
                 @JsonProperty("memoryUsage") long memoryUsage,
                 @JsonProperty("bufferRetainedSizeInBytes") long bufferRetainedSizeInBytes,
-                @JsonProperty("serverReceivedTime") long serverReceivedTime,
-                @JsonProperty("clientSentTime") long clientSentTime)
+                @JsonProperty("clientGetSentTimes") List<Long> clientGetSentTimes,
+                @JsonProperty("serverGetReceivedTimes") List<Long> serverGetReceivedTimes,
+                @JsonProperty("clientGetResponseCalledTimes") List<Long> clientGetResponseCalledTimes,
+                @JsonProperty("clientDeleteSentTimes") List<Long> clientDeleteSentTimes,
+                @JsonProperty("serverDeleteReceivedTimes") List<Long> serverDeleteReceivedTimes,
+                @JsonProperty("clientDeleteResponseCalledTimes") List<Long> clientDeleteResponseCalledTimes
+        )
         {
             this.heapMemoryUsed = memoryUsage;
             this.bufferRetainedSizeInBytes = bufferRetainedSizeInBytes;
-            this.serverReceivedTime = serverReceivedTime;
-            this.clientSentTime = clientSentTime;
+            this.clientGetSentTimes = clientGetSentTimes;
+            this.serverGetReceivedTimes = serverGetReceivedTimes;
+            this.clientGetResponseCalledTimes = clientGetResponseCalledTimes;
+            this.clientDeleteSentTimes = clientDeleteSentTimes;
+            this.serverDeleteReceivedTimes = serverDeleteReceivedTimes;
+            this.clientDeleteResponseCalledTimes = clientDeleteResponseCalledTimes;
         }
 
         @JsonProperty
@@ -81,26 +95,39 @@ public class DownstreamStats
         }
 
         @JsonProperty
-        public long getServerReceivedTime()
+        public List<Long> getClientGetSentTimes()
         {
-            return serverReceivedTime;
+            return clientGetSentTimes;
         }
 
         @JsonProperty
-        public long getClientSentTime()
+        public List<Long> getServerGetReceivedTimes()
         {
-            return clientSentTime;
+            return serverGetReceivedTimes;
         }
 
-        @Override
-        public String toString()
+        @JsonProperty
+        public List<Long> getClientGetResponseCalledTimes()
         {
-            return toStringHelper(this)
-                    .add("heapMemoryUsed", heapMemoryUsed)
-                    .add("bufferRetainedSizeInBytes", bufferRetainedSizeInBytes)
-                    .add("serverReceivedTime", serverReceivedTime)
-                    .add("clientSentTime", clientSentTime)
-                    .toString();
+            return clientGetResponseCalledTimes;
+        }
+
+        @JsonProperty
+        public List<Long> getClientDeleteSentTimes()
+        {
+            return clientDeleteSentTimes;
+        }
+
+        @JsonProperty
+        public List<Long> getServerDeleteReceivedTimes()
+        {
+            return serverDeleteReceivedTimes;
+        }
+
+        @JsonProperty
+        public List<Long> getClientDeleteResponseCalledTimes()
+        {
+            return clientDeleteResponseCalledTimes;
         }
     }
 

@@ -26,7 +26,9 @@ import io.airlift.units.DataSize;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -52,6 +54,8 @@ public class DiscardingOutputBuffer
 
     @GuardedBy("this")
     private final ConcurrentMap<OutputBuffers.OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
+    private final Queue<Long> serverGetReceivedTime = new ConcurrentLinkedQueue<>();
+    private final Queue<Long> serverDeleteReceivedTime = new ConcurrentLinkedQueue<>();
 
     public DiscardingOutputBuffer(OutputBuffers outputBuffers, StateMachine<BufferState> state)
     {
@@ -118,7 +122,14 @@ public class DiscardingOutputBuffer
     @Override
     public void updateDownStreamStats(OutputBuffers.OutputBufferId bufferId, DownstreamStatsRequest downstreamStatsRequest)
     {
-        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed, downstreamStatsRequest.bufferRetainedSizeInBytes, System.currentTimeMillis(), downstreamStatsRequest.clientSentTime);
+        DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed,
+                downstreamStatsRequest.bufferRetainedSizeInBytes,
+                downstreamStatsRequest.getClientGetSentTimes(),
+                serverGetReceivedTime.stream().collect(Collectors.toList()),
+                downstreamStatsRequest.getClientGetResponseCalledTimes(),
+                downstreamStatsRequest.getClientDeleteSentTimes(),
+                serverDeleteReceivedTime.stream().collect(Collectors.toList()),
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 
@@ -130,6 +141,7 @@ public class DiscardingOutputBuffer
     @Override
     public ListenableFuture<BufferResult> get(OutputBuffers.OutputBufferId bufferId, long token, DataSize maxSize)
     {
+        serverGetReceivedTime.add(System.currentTimeMillis());
         throw new UnsupportedOperationException("DiscardingOutputBuffer must not have any active readers");
     }
 
@@ -140,7 +152,10 @@ public class DiscardingOutputBuffer
     }
 
     @Override
-    public void abort(OutputBuffers.OutputBufferId bufferId) {}
+    public void abort(OutputBuffers.OutputBufferId bufferId)
+    {
+        serverDeleteReceivedTime.add(System.currentTimeMillis());
+    }
 
     @Override
     public ListenableFuture<?> isFull()
