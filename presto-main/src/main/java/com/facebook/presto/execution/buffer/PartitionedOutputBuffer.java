@@ -27,8 +27,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 
-import javax.annotation.concurrent.GuardedBy;
-
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,8 +63,8 @@ public class PartitionedOutputBuffer
     private final AtomicLong totalPagesAdded = new AtomicLong();
     private final AtomicLong totalRowsAdded = new AtomicLong();
     private final ConcurrentMap<OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
-    private final Queue<Long> serverGetReceivedTime = new ConcurrentLinkedQueue<>();
-    private final Queue<Long> serverDeleteReceivedTime = new ConcurrentLinkedQueue<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
 
     public PartitionedOutputBuffer(
             String taskInstanceId,
@@ -248,10 +246,10 @@ public class PartitionedOutputBuffer
         DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed,
                 downstreamStatsRequest.bufferRetainedSizeInBytes,
                 downstreamStatsRequest.getClientGetSentTimes(),
-                serverGetReceivedTime.stream().collect(Collectors.toList()),
+                serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
-                serverDeleteReceivedTime.stream().collect(Collectors.toList()),
+                serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
                 downstreamStatsRequest.getClientDeleteResponseCalledTimes());
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
@@ -268,7 +266,7 @@ public class PartitionedOutputBuffer
         requireNonNull(outputBufferId, "outputBufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
-        serverGetReceivedTime.add(System.currentTimeMillis());
+        serverGetReceivedTime.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
         return partitions.get(outputBufferId.getId()).getPages(startingSequenceId, maxSize);
     }
 
@@ -285,7 +283,7 @@ public class PartitionedOutputBuffer
     {
         requireNonNull(bufferId, "bufferId is null");
 
-        serverDeleteReceivedTime.add(System.currentTimeMillis());
+        serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
         partitions.get(bufferId.getId()).destroy();
 
         checkFlushComplete();

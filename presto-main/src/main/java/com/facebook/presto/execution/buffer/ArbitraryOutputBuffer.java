@@ -92,8 +92,8 @@ public class ArbitraryOutputBuffer
     private final AtomicLong totalRowsAdded = new AtomicLong();
 
     private final LifespanSerializedPageTracker pageTracker;
-    private final Queue<Long> serverGetReceivedTime = new ConcurrentLinkedQueue<>();
-    private final Queue<Long> serverDeleteReceivedTime = new ConcurrentLinkedQueue<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
 
     public ArbitraryOutputBuffer(
             String taskInstanceId,
@@ -220,10 +220,10 @@ public class ArbitraryOutputBuffer
         DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed,
                 downstreamStatsRequest.bufferRetainedSizeInBytes,
                 downstreamStatsRequest.getClientGetSentTimes(),
-                serverGetReceivedTime.stream().collect(Collectors.toList()),
+                serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
-                serverDeleteReceivedTime.stream().collect(Collectors.toList()),
+                serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
                 downstreamStatsRequest.getClientDeleteResponseCalledTimes());
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
@@ -315,7 +315,7 @@ public class ArbitraryOutputBuffer
         requireNonNull(bufferId, "bufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
-        serverGetReceivedTime.add(System.currentTimeMillis());
+        serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
         return getBuffer(bufferId).getPages(startingSequenceId, maxSize, Optional.of(masterBuffer));
     }
 
@@ -334,7 +334,7 @@ public class ArbitraryOutputBuffer
         checkState(!Thread.holdsLock(this), "Can not abort while holding a lock on this");
         requireNonNull(bufferId, "bufferId is null");
 
-        serverDeleteReceivedTime.add(System.currentTimeMillis());
+        serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
         getBuffer(bufferId).destroy();
 
         checkFlushComplete();

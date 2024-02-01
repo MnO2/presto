@@ -54,8 +54,8 @@ public class DiscardingOutputBuffer
 
     @GuardedBy("this")
     private final ConcurrentMap<OutputBuffers.OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
-    private final Queue<Long> serverGetReceivedTime = new ConcurrentLinkedQueue<>();
-    private final Queue<Long> serverDeleteReceivedTime = new ConcurrentLinkedQueue<>();
+    private final ConcurrentMap<OutputBuffers.OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBuffers.OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
 
     public DiscardingOutputBuffer(OutputBuffers outputBuffers, StateMachine<BufferState> state)
     {
@@ -125,10 +125,10 @@ public class DiscardingOutputBuffer
         DownstreamStats.Entry entry = new DownstreamStats.Entry(downstreamStatsRequest.heapMemoryUsed,
                 downstreamStatsRequest.bufferRetainedSizeInBytes,
                 downstreamStatsRequest.getClientGetSentTimes(),
-                serverGetReceivedTime.stream().collect(Collectors.toList()),
+                serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
-                serverDeleteReceivedTime.stream().collect(Collectors.toList()),
+                serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
                 downstreamStatsRequest.getClientDeleteResponseCalledTimes());
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
@@ -141,7 +141,7 @@ public class DiscardingOutputBuffer
     @Override
     public ListenableFuture<BufferResult> get(OutputBuffers.OutputBufferId bufferId, long token, DataSize maxSize)
     {
-        serverGetReceivedTime.add(System.currentTimeMillis());
+        serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
         throw new UnsupportedOperationException("DiscardingOutputBuffer must not have any active readers");
     }
 
@@ -154,7 +154,7 @@ public class DiscardingOutputBuffer
     @Override
     public void abort(OutputBuffers.OutputBufferId bufferId)
     {
-        serverDeleteReceivedTime.add(System.currentTimeMillis());
+        serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
     }
 
     @Override

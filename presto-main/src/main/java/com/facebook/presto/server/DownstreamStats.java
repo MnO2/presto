@@ -69,8 +69,7 @@ public class DownstreamStats
                 @JsonProperty("clientGetResponseCalledTimes") List<Long> clientGetResponseCalledTimes,
                 @JsonProperty("clientDeleteSentTimes") List<Long> clientDeleteSentTimes,
                 @JsonProperty("serverDeleteReceivedTimes") List<Long> serverDeleteReceivedTimes,
-                @JsonProperty("clientDeleteResponseCalledTimes") List<Long> clientDeleteResponseCalledTimes
-        )
+                @JsonProperty("clientDeleteResponseCalledTimes") List<Long> clientDeleteResponseCalledTimes)
         {
             this.heapMemoryUsed = memoryUsage;
             this.bufferRetainedSizeInBytes = bufferRetainedSizeInBytes;

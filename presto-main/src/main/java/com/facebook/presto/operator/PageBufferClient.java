@@ -104,8 +104,6 @@ public final class PageBufferClient
 
     private final Queue<Long> clientDeleteSentTimes = new ConcurrentLinkedQueue<>();
     private final Queue<Long> clientDeleteResponseCalledTimes = new ConcurrentLinkedQueue<>();
-
-
     @GuardedBy("this")
     private boolean closed;
     @GuardedBy("this")
