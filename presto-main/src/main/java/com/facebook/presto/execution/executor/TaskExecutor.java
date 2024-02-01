@@ -25,8 +25,11 @@ import com.facebook.presto.execution.SplitRunner;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.TaskManagerConfig.TaskPriorityTracking;
+import com.facebook.presto.execution.buffer.BufferInfo;
 import com.facebook.presto.execution.buffer.OutputBuffer;
+import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.operator.scalar.JoniRegexpFunctions;
+import com.facebook.presto.server.BufferInfoWithDownstreamStatsRecord;
 import com.facebook.presto.server.DownstreamStatsRecords;
 import com.facebook.presto.server.ServerConfig;
 import com.facebook.presto.spi.PrestoException;
@@ -276,6 +279,27 @@ public class TaskExecutor
         }
     }
 
+    private static List<BufferInfoWithDownstreamStatsRecord> unfinishedBufferInfoAndDownstreamStats(OutputBufferInfo outputBufferInfo, List<DownstreamStatsRecords> downstreamStatsRecordsList)
+    {
+        List<BufferInfoWithDownstreamStatsRecord> results = new ArrayList<>();
+        List<BufferInfo> bufferInfoList = outputBufferInfo.getBuffers();
+        for (BufferInfo bufferInfo : bufferInfoList) {
+            try {
+                if (!bufferInfo.isFinished() && bufferInfo.getBufferedPages() > 0) {
+                    Optional<DownstreamStatsRecords> downstreamStatsRecord = downstreamStatsRecordsList.stream().filter(r -> r.getBufferId() == bufferInfo.getBufferId()).findFirst();
+                    if (downstreamStatsRecord.isPresent()) {
+                        BufferInfoWithDownstreamStatsRecord r = new BufferInfoWithDownstreamStatsRecord(bufferInfo, downstreamStatsRecord.get());
+                        results.add(r);
+                    }
+                }
+            }
+            catch (Exception e) {
+                log.error(e);
+            }
+        }
+
+        return results;
+    }
     private void gracefulShutdown(List<TaskHandle> currentTasksSnapshot)
     {
         //FIXME this is just to test scribe
@@ -341,8 +365,11 @@ public class TaskExecutor
                             while (!taskHandle.isOutputBufferEmpty()) {
                                 try {
                                     List<DownstreamStatsRecords> downstreamStatsRecords = taskHandle.getDownstreamStats();
-                                    eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, outputBuffer.getInfo(), downstreamStatsRecords, mapper);
-                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, outputbuffer info = %s", taskId, outputBuffer.getInfo());
+                                    List<BufferInfoWithDownstreamStatsRecord> bufferInfoWithDownstreamStatsRecordList = unfinishedBufferInfoAndDownstreamStats(outputBuffer.getInfo(), downstreamStatsRecords);
+                                    String serializedBufferInfoWithDownstreamStatsRecordList = mapper.writeValueAsString(bufferInfoWithDownstreamStatsRecordList);
+                                    eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, serializedBufferInfoWithDownstreamStatsRecordList);
+
+                                    log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, bufferInfoWithDownstreamStatsRecordList = %s", taskId, serializedBufferInfoWithDownstreamStatsRecordList);
                                     Thread.sleep(5000);
                                 }
                                 catch (InterruptedException e) {
