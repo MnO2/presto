@@ -129,6 +129,7 @@ public class SpoolingOutputBuffer
     private final ConcurrentMap<OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> fetchGetSizesInBytes = new ConcurrentHashMap<>();
 
     public SpoolingOutputBuffer(
             TaskId taskId,
@@ -309,7 +310,8 @@ public class SpoolingOutputBuffer
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
                 serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
-                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes(),
+                fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()));
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 

@@ -56,6 +56,7 @@ public class DiscardingOutputBuffer
     private final ConcurrentMap<OutputBuffers.OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBuffers.OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBuffers.OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBuffers.OutputBufferId, Queue<Long>> fetchGetSizesInBytes = new ConcurrentHashMap<>();
 
     public DiscardingOutputBuffer(OutputBuffers outputBuffers, StateMachine<BufferState> state)
     {
@@ -129,7 +130,8 @@ public class DiscardingOutputBuffer
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
                 serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
-                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes(),
+                fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()));
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 

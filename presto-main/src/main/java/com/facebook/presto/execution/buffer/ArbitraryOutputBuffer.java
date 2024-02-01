@@ -94,6 +94,7 @@ public class ArbitraryOutputBuffer
     private final LifespanSerializedPageTracker pageTracker;
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> fetchGetSizesInBytes = new ConcurrentHashMap<>();
 
     public ArbitraryOutputBuffer(
             String taskInstanceId,
@@ -224,7 +225,8 @@ public class ArbitraryOutputBuffer
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
                 serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
-                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes(),
+                fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()));
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 
@@ -316,6 +318,7 @@ public class ArbitraryOutputBuffer
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
         serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
+        fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(maxSize.toBytes());
         return getBuffer(bufferId).getPages(startingSequenceId, maxSize, Optional.of(masterBuffer));
     }
 
@@ -335,6 +338,7 @@ public class ArbitraryOutputBuffer
         requireNonNull(bufferId, "bufferId is null");
 
         serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
+
         getBuffer(bufferId).destroy();
 
         checkFlushComplete();

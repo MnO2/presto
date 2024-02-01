@@ -84,6 +84,7 @@ public class BroadcastOutputBuffer
     private final AtomicLong totalBufferedPages = new AtomicLong();
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> fetchGetSizesInBytes = new ConcurrentHashMap<>();
 
     public BroadcastOutputBuffer(
             String taskInstanceId,
@@ -278,7 +279,8 @@ public class BroadcastOutputBuffer
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
                 serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
-                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes(),
+                fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()));
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 
@@ -296,6 +298,7 @@ public class BroadcastOutputBuffer
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
         serverGetReceivedTime.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
+        fetchGetSizesInBytes.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>()).add(maxSize.toBytes());
         return getBuffer(outputBufferId).getPages(startingSequenceId, maxSize);
     }
 

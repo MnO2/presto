@@ -59,6 +59,7 @@ public class DownstreamStats
         public List<Long> clientDeleteSentTimes;
         public List<Long> clientDeleteResponseCalledTimes;
         public List<Long> serverDeleteReceivedTimes;
+        public List<Long> fetchGetSizesInBytes;
 
         @JsonCreator
         public Entry(
@@ -69,7 +70,8 @@ public class DownstreamStats
                 @JsonProperty("clientGetResponseCalledTimes") List<Long> clientGetResponseCalledTimes,
                 @JsonProperty("clientDeleteSentTimes") List<Long> clientDeleteSentTimes,
                 @JsonProperty("serverDeleteReceivedTimes") List<Long> serverDeleteReceivedTimes,
-                @JsonProperty("clientDeleteResponseCalledTimes") List<Long> clientDeleteResponseCalledTimes)
+                @JsonProperty("clientDeleteResponseCalledTimes") List<Long> clientDeleteResponseCalledTimes,
+                @JsonProperty("fetchGetSizesInBytes") List<Long> fetchGetSizesInBytes)
         {
             this.heapMemoryUsed = memoryUsage;
             this.bufferRetainedSizeInBytes = bufferRetainedSizeInBytes;
@@ -79,6 +81,7 @@ public class DownstreamStats
             this.clientDeleteSentTimes = clientDeleteSentTimes;
             this.serverDeleteReceivedTimes = serverDeleteReceivedTimes;
             this.clientDeleteResponseCalledTimes = clientDeleteResponseCalledTimes;
+            this.fetchGetSizesInBytes = fetchGetSizesInBytes;
         }
 
         @JsonProperty
@@ -127,6 +130,12 @@ public class DownstreamStats
         public List<Long> getClientDeleteResponseCalledTimes()
         {
             return clientDeleteResponseCalledTimes;
+        }
+
+        @JsonProperty
+        public List<Long> getFetchGetSizesInBytes()
+        {
+            return fetchGetSizesInBytes;
         }
     }
 

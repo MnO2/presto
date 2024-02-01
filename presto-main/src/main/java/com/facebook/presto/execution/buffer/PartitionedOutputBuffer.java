@@ -65,6 +65,7 @@ public class PartitionedOutputBuffer
     private final ConcurrentMap<OutputBufferId, DownstreamStats> downstreamStats = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverGetReceivedTime = new ConcurrentHashMap<>();
     private final ConcurrentMap<OutputBufferId, Queue<Long>> serverDeleteReceivedTime = new ConcurrentHashMap<>();
+    private final ConcurrentMap<OutputBufferId, Queue<Long>> fetchGetSizesInBytes = new ConcurrentHashMap<>();
 
     public PartitionedOutputBuffer(
             String taskInstanceId,
@@ -250,7 +251,8 @@ public class PartitionedOutputBuffer
                 downstreamStatsRequest.getClientGetResponseCalledTimes(),
                 downstreamStatsRequest.getClientDeleteSentTimes(),
                 serverDeleteReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()),
-                downstreamStatsRequest.getClientDeleteResponseCalledTimes());
+                downstreamStatsRequest.getClientDeleteResponseCalledTimes(),
+                fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).stream().collect(Collectors.toList()));
         downstreamStats.computeIfAbsent(bufferId, k -> new DownstreamStats(downstreamStatsRequest.bufferId)).addEntry(entry);
     }
 
@@ -267,6 +269,7 @@ public class PartitionedOutputBuffer
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
         serverGetReceivedTime.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
+        fetchGetSizesInBytes.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>()).add(maxSize.toBytes());
         return partitions.get(outputBufferId.getId()).getPages(startingSequenceId, maxSize);
     }
 
