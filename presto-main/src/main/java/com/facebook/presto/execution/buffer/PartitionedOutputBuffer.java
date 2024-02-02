@@ -268,8 +268,18 @@ public class PartitionedOutputBuffer
         requireNonNull(outputBufferId, "outputBufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
-        serverGetReceivedTime.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
-        fetchGetSizesInBytes.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>()).add(maxSize.toBytes());
+        Queue<Long> serverGetReceivedTimeQueue = serverGetReceivedTime.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>());
+        serverGetReceivedTimeQueue.add(System.currentTimeMillis());
+        while (serverGetReceivedTimeQueue.size() > 5) {
+            serverGetReceivedTimeQueue.poll();
+        }
+
+        Queue<Long> fetchGetSizesInBytesQueue = fetchGetSizesInBytes.computeIfAbsent(outputBufferId, v -> new ConcurrentLinkedQueue<>());
+        fetchGetSizesInBytesQueue.add(maxSize.toBytes());
+        while (fetchGetSizesInBytesQueue.size() > 5) {
+            fetchGetSizesInBytesQueue.poll();
+        }
+
         return partitions.get(outputBufferId.getId()).getPages(startingSequenceId, maxSize);
     }
 

@@ -143,7 +143,6 @@ public class DiscardingOutputBuffer
     @Override
     public ListenableFuture<BufferResult> get(OutputBuffers.OutputBufferId bufferId, long token, DataSize maxSize)
     {
-        serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
         throw new UnsupportedOperationException("DiscardingOutputBuffer must not have any active readers");
     }
 

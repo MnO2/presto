@@ -317,8 +317,17 @@ public class ArbitraryOutputBuffer
         requireNonNull(bufferId, "bufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
-        serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
-        fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(maxSize.toBytes());
+        Queue<Long> serverGetReceivedTimeQueue = serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>());
+        serverGetReceivedTimeQueue.add(System.currentTimeMillis());
+        while (serverGetReceivedTimeQueue.size() > 5) {
+            serverGetReceivedTimeQueue.poll();
+        }
+
+        Queue<Long> fetchGetSizesInBytesQueue = fetchGetSizesInBytes.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>());
+        fetchGetSizesInBytesQueue.add(maxSize.toBytes());
+        while (fetchGetSizesInBytesQueue.size() > 5) {
+            fetchGetSizesInBytesQueue.poll();
+        }
         return getBuffer(bufferId).getPages(startingSequenceId, maxSize, Optional.of(masterBuffer));
     }
 

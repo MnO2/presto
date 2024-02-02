@@ -327,7 +327,6 @@ public class SpoolingOutputBuffer
         requireNonNull(bufferId, "outputBufferId is null");
         checkArgument(bufferId.getId() == outputBufferId.getId(), "Invalid buffer id");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
-        serverGetReceivedTime.computeIfAbsent(bufferId, v -> new ConcurrentLinkedQueue<>()).add(System.currentTimeMillis());
         acknowledge(bufferId, startSequenceId);
 
         long currentSequenceId = this.currentSequenceId.get();

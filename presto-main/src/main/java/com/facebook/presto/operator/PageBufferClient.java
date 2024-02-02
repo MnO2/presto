@@ -293,7 +293,13 @@ public final class PageBufferClient
 
                 long heapMemoryUsed = memoryUsage.getUsed();
                 long bufferRetainedSizeInBytes = clientCallback.getBufferRetainedSizeInBytes();
-                DownstreamStatsRequest downstreamStatsRequest = new DownstreamStatsRequest(outputBufferId, heapMemoryUsed, bufferRetainedSizeInBytes, clientGetSentTimes.stream().collect(Collectors.toList()), clientGetResponseCalledTimes.stream().collect(Collectors.toList()), clientDeleteSentTimes.stream().collect(Collectors.toList()), clientDeleteResponseCalledTimes.stream().collect(Collectors.toList()));
+                DownstreamStatsRequest downstreamStatsRequest = new DownstreamStatsRequest(outputBufferId,
+                        heapMemoryUsed,
+                        bufferRetainedSizeInBytes,
+                        clientGetSentTimes.stream().collect(Collectors.toList()),
+                        clientGetResponseCalledTimes.stream().collect(Collectors.toList()),
+                        clientDeleteSentTimes.stream().collect(Collectors.toList()),
+                        clientDeleteResponseCalledTimes.stream().collect(Collectors.toList()));
                 sendDownstreamStats(downstreamStatsRequest);
             }
             catch (Throwable t) {
@@ -314,6 +320,10 @@ public final class PageBufferClient
         ListenableFuture<PagesResponse> resultFuture = resultClient.getResults(token, maxResponseSize);
 
         clientGetSentTimes.add(System.currentTimeMillis());
+        while (clientGetSentTimes.size() > 5) {
+            clientGetSentTimes.poll();
+        }
+
         future = resultFuture;
         Futures.addCallback(resultFuture, new FutureCallback<PagesResponse>()
         {
@@ -323,6 +333,10 @@ public final class PageBufferClient
                 checkNotHoldsLock(this);
 
                 clientGetResponseCalledTimes.add(System.currentTimeMillis());
+                while (clientGetResponseCalledTimes.size() > 5) {
+                    clientGetResponseCalledTimes.poll();
+                }
+
                 backoff.success();
 
                 List<SerializedPage> pages;
@@ -414,6 +428,10 @@ public final class PageBufferClient
                 checkNotHoldsLock(this);
 
                 clientGetResponseCalledTimes.add(System.currentTimeMillis());
+                while (clientGetResponseCalledTimes.size() > 5) {
+                    clientGetResponseCalledTimes.poll();
+                }
+
                 t = resultClient.rewriteException(t);
                 if (!(t instanceof PrestoException) && backoff.failure()) {
                     String message = format("%s (%s - %s failures, failure duration %s, total failed request time %s)",
@@ -435,6 +453,9 @@ public final class PageBufferClient
         future = resultFuture;
 
         clientDeleteSentTimes.add(System.currentTimeMillis());
+        while (clientDeleteSentTimes.size() > 5) {
+            clientDeleteSentTimes.poll();
+        }
         Futures.addCallback(resultFuture, new FutureCallback<Object>()
         {
             @Override
@@ -442,6 +463,9 @@ public final class PageBufferClient
             {
                 checkNotHoldsLock(this);
                 clientDeleteResponseCalledTimes.add(System.currentTimeMillis());
+                while (clientDeleteResponseCalledTimes.size() > 5) {
+                    clientDeleteResponseCalledTimes.poll();
+                }
                 backoff.success();
                 synchronized (PageBufferClient.this) {
                     closed = true;
@@ -459,6 +483,10 @@ public final class PageBufferClient
             {
                 checkNotHoldsLock(this);
                 clientDeleteResponseCalledTimes.add(System.currentTimeMillis());
+                while (clientDeleteResponseCalledTimes.size() > 5) {
+                    clientDeleteResponseCalledTimes.poll();
+                }
+
                 log.error(t, "Request to delete %s failed", location);
                 if (!(t instanceof PrestoException) && backoff.failure()) {
                     String message = format("Error closing remote buffer (%s - %s failures, failure duration %s, total failed request time %s)",
