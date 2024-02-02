@@ -19,6 +19,7 @@ import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.stats.CounterStat;
 import com.facebook.airlift.stats.TimeDistribution;
 import com.facebook.airlift.stats.TimeStat;
+import com.facebook.presto.event.TaskMonitor;
 import com.facebook.presto.eventlistener.EventListenerManager;
 import com.facebook.presto.execution.QueryManagerConfig;
 import com.facebook.presto.execution.SplitRunner;
@@ -197,6 +198,7 @@ public class TaskExecutor
     private final TimeStat outputBufferEmptyWaitTime = new TimeStat(NANOSECONDS);
     private final TimeStat waitForRunningSplitTime = new TimeStat(NANOSECONDS);
     private final EventListenerManager eventListenerManager;
+    private final TaskMonitor taskMonitor;
     private volatile boolean closed;
     private final ExecutorService taskShutdownExecutor = newCachedThreadPool(daemonThreadsNamed("task-shutdown-%s"));
     private final AtomicBoolean isGracefulShutdownStarted = new AtomicBoolean(false);
@@ -208,7 +210,7 @@ public class TaskExecutor
     private boolean enableRetryForFailedSplits;
 
     @Inject
-    public TaskExecutor(TaskManagerConfig config, EmbedVersion embedVersion, MultilevelSplitQueue splitQueue, QueryManagerConfig queryManagerConfig, EventListenerManager eventListenerManager)
+    public TaskExecutor(TaskManagerConfig config, EmbedVersion embedVersion, MultilevelSplitQueue splitQueue, QueryManagerConfig queryManagerConfig, EventListenerManager eventListenerManager, TaskMonitor taskMonitor)
     {
         this(requireNonNull(config, "config is null").getMaxWorkerThreads(),
                 config.getMinDrivers(),
@@ -223,7 +225,8 @@ public class TaskExecutor
                 Ticker.systemTicker(),
                 queryManagerConfig.isEnableGracefulShutdown(),
                 queryManagerConfig.isEnableRetryForFailedSplits(),
-                eventListenerManager);
+                eventListenerManager,
+                taskMonitor);
     }
 
     public void gracefulShutdown()
@@ -424,7 +427,8 @@ public class TaskExecutor
                 ticker,
                 enableGracefulShutdown,
                 enableRetryForFailedSplits,
-                new TestingEventListenerManager());
+                new TestingEventListenerManager(),
+                null);
     }
 
     @VisibleForTesting
@@ -451,7 +455,8 @@ public class TaskExecutor
                 ticker,
                 false,
                 false,
-                new TestingEventListenerManager());
+                new TestingEventListenerManager(),
+                null);
     }
 
     @VisibleForTesting
@@ -469,7 +474,8 @@ public class TaskExecutor
             Ticker ticker,
             boolean enableGracefulShutdown,
             boolean enableRetryForFailedSplits,
-            EventListenerManager eventListenerManager)
+            EventListenerManager eventListenerManager,
+            TaskMonitor taskMonitor)
     {
         checkArgument(runnerThreads > 0, "runnerThreads must be at least 1");
         checkArgument(guaranteedNumberOfDriversPerTask > 0, "guaranteedNumberOfDriversPerTask must be at least 1");
@@ -512,6 +518,7 @@ public class TaskExecutor
         this.enableGracefulShutdown = enableGracefulShutdown;
         this.enableRetryForFailedSplits = enableRetryForFailedSplits;
         this.eventListenerManager = requireNonNull(eventListenerManager, "eventListenerManager is null");
+        this.taskMonitor = taskMonitor;
     }
 
     @PostConstruct
@@ -869,9 +876,11 @@ public class TaskExecutor
                         }
                         else {
                             if (blocked.isDone()) {
+                                taskMonitor.updateOutputBufferUtilization(split.getTaskHandle().getTaskId(), split.getTaskHandle().getOutputBufferUtilization());
                                 waitingSplits.offer(split);
                             }
                             else {
+                                taskMonitor.updateOutputBufferUtilization(split.getTaskHandle().getTaskId(), split.getTaskHandle().getOutputBufferUtilization());
                                 blockedSplits.put(split, blocked);
                                 blocked.addListener(() -> {
                                     // reset the level priority to prevent previously-blocked splits from starving existing splits

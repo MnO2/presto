@@ -305,7 +305,12 @@ public class TaskResource
 
         taskManager.updateDownStreamStats(taskId, downstreamStatsRequest.bufferId, downstreamStatsRequest);
 
-        return Response.ok().build();
+        if (shutdownHandler.isGracefulShutdownRequested()) {
+            return Response.noContent().build();
+        }
+        else {
+            return Response.ok().build();
+        }
     }
 
     @GET

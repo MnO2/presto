@@ -17,6 +17,8 @@ import com.facebook.airlift.http.client.HttpClient;
 import com.facebook.airlift.json.JsonCodec;
 import com.facebook.airlift.log.Logger;
 import com.facebook.drift.client.DriftClient;
+import com.facebook.presto.event.TaskMonitor;
+import com.facebook.presto.eventlistener.EventListenerManager;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.PageBufferClient.ClientCallback;
@@ -43,6 +45,7 @@ import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -94,6 +97,7 @@ public class ExchangeClient
     private final HttpClient httpClient;
     private final DriftClient<ThriftTaskClient> driftClient;
     private final ScheduledExecutorService scheduler;
+    private Optional<TaskId> taskId = Optional.empty();
 
     @GuardedBy("this")
     private boolean noMoreLocations;
@@ -129,6 +133,8 @@ public class ExchangeClient
     private final boolean isEnableGracefulShutdown;
     private final boolean isEnableRetryForFailedSplits;
     private final JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec;
+    private final EventListenerManager eventListenerManager;
+    private final TaskMonitor taskMonitor;
 
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
@@ -146,7 +152,9 @@ public class ExchangeClient
             Executor pageBufferClientCallbackExecutor,
             boolean isEnableGracefulShutdown,
             boolean isEnableRetryForFailedSplits,
-            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
+            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec,
+            EventListenerManager eventListenerManager,
+            TaskMonitor taskMonitor)
     {
         checkArgument(responseSizeExponentialMovingAverageDecayingAlpha >= 0.0 && responseSizeExponentialMovingAverageDecayingAlpha <= 1.0, "responseSizeExponentialMovingAverageDecayingAlpha must be between 0 and 1: %s", responseSizeExponentialMovingAverageDecayingAlpha);
         this.bufferCapacity = bufferCapacity.toBytes();
@@ -164,6 +172,8 @@ public class ExchangeClient
         this.isEnableGracefulShutdown = isEnableGracefulShutdown;
         this.isEnableRetryForFailedSplits = isEnableRetryForFailedSplits;
         this.downstreamStatsRequestJsonCodec = downstreamStatsRequestJsonCodec;
+        this.eventListenerManager = eventListenerManager;
+        this.taskMonitor = taskMonitor;
     }
 
     public ExchangeClientStatus getStatus()
@@ -188,6 +198,11 @@ public class ExchangeClient
     public long getBufferRetainedSizeInBytes()
     {
         return bufferRetainedSizeInBytes;
+    }
+
+    public void setTaskId(TaskId taskId)
+    {
+        this.taskId = Optional.of(taskId);
     }
 
     public synchronized void addLocation(URI location, TaskId remoteSourceTaskId)
@@ -216,7 +231,7 @@ public class ExchangeClient
         switch (location.getScheme().toLowerCase(Locale.ENGLISH)) {
             case "http":
             case "https":
-                resultClient = new HttpRpcShuffleClient(httpClient, location, isEnableGracefulShutdown, isEnableRetryForFailedSplits, downstreamStatsRequestJsonCodec);
+                resultClient = new HttpRpcShuffleClient(httpClient, location, isEnableGracefulShutdown, isEnableRetryForFailedSplits, downstreamStatsRequestJsonCodec, eventListenerManager, taskId, taskMonitor);
                 break;
             case "thrift":
                 resultClient = new ThriftRpcShuffleClient(driftClient, location);

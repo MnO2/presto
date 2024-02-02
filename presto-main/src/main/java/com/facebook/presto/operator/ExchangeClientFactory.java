@@ -17,6 +17,8 @@ import com.facebook.airlift.concurrent.ThreadPoolExecutorMBean;
 import com.facebook.airlift.http.client.HttpClient;
 import com.facebook.airlift.json.JsonCodec;
 import com.facebook.drift.client.DriftClient;
+import com.facebook.presto.event.TaskMonitor;
+import com.facebook.presto.eventlistener.EventListenerManager;
 import com.facebook.presto.execution.QueryManagerConfig;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.server.DownstreamStatsRequest;
@@ -55,6 +57,8 @@ public class ExchangeClientFactory
     private final ExecutorService pageBufferClientCallbackExecutor;
     private final QueryManagerConfig queryManagerConfig;
     private final JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec;
+    private final EventListenerManager eventListenerManager;
+    private final TaskMonitor taskMonitor;
     @Inject
     public ExchangeClientFactory(
             ExchangeClientConfig config,
@@ -62,7 +66,9 @@ public class ExchangeClientFactory
             @ForExchange DriftClient<ThriftTaskClient> driftClient,
             @ForExchange ScheduledExecutorService scheduler,
             QueryManagerConfig queryManagerConfig,
-            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
+            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec,
+            EventListenerManager eventListenerManager,
+            TaskMonitor taskMonitor)
     {
         this(
                 config.getMaxBufferSize(),
@@ -76,7 +82,9 @@ public class ExchangeClientFactory
                 driftClient,
                 scheduler,
                 queryManagerConfig,
-                downstreamStatsRequestJsonCodec);
+                downstreamStatsRequestJsonCodec,
+                eventListenerManager,
+                taskMonitor);
     }
 
     public ExchangeClientFactory(
@@ -91,7 +99,9 @@ public class ExchangeClientFactory
             DriftClient<ThriftTaskClient> driftClient,
             ScheduledExecutorService scheduler,
             QueryManagerConfig queryManagerConfig,
-            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
+            JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec,
+            EventListenerManager eventListenerManager,
+            TaskMonitor taskMonitor)
     {
         this.maxBufferedBytes = requireNonNull(maxBufferedBytes, "maxBufferedBytes is null");
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
@@ -114,6 +124,8 @@ public class ExchangeClientFactory
         this.executorMBean = new ThreadPoolExecutorMBean((ThreadPoolExecutor) pageBufferClientCallbackExecutor);
 
         this.responseSizeExponentialMovingAverageDecayingAlpha = responseSizeExponentialMovingAverageDecayingAlpha;
+        this.eventListenerManager = eventListenerManager;
+        this.taskMonitor = taskMonitor;
 
         checkArgument(maxBufferedBytes.toBytes() > 0, "maxBufferSize must be at least 1 byte: %s", maxBufferedBytes);
         checkArgument(maxResponseSize.toBytes() > 0, "maxResponseSize must be at least 1 byte: %s", maxResponseSize);
@@ -151,6 +163,8 @@ public class ExchangeClientFactory
                 pageBufferClientCallbackExecutor,
                 queryManagerConfig.isEnableGracefulShutdown(),
                 queryManagerConfig.isEnableRetryForFailedSplits(),
-                downstreamStatsRequestJsonCodec);
+                downstreamStatsRequestJsonCodec,
+                eventListenerManager,
+                taskMonitor);
     }
 }

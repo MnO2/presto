@@ -21,10 +21,15 @@ import com.facebook.airlift.http.client.ResponseHandler;
 import com.facebook.airlift.http.client.ResponseTooLargeException;
 import com.facebook.airlift.json.JsonCodec;
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.event.TaskMonitor;
+import com.facebook.presto.eventlistener.EventListenerManager;
+import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.operator.PageBufferClient.PagesResponse;
 import com.facebook.presto.server.DownstreamStatsRequest;
+import com.facebook.presto.server.IntermediateStatsRecords;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.page.SerializedPage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.MediaType;
@@ -40,6 +45,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 import static com.facebook.airlift.http.client.HttpStatus.familyForStatusCode;
 import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
@@ -76,20 +82,28 @@ public final class HttpRpcShuffleClient
     private final boolean isEnableGracefulShutdown;
     private final boolean isEnableRetryForFailedSplits;
     private final JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec;
+    private final EventListenerManager eventListenerManager;
+    private final Optional<TaskId> taskId;
+    private final TaskMonitor taskMonitor;
+    private final ObjectMapper objectMapper;
 
     @VisibleForTesting
     public HttpRpcShuffleClient(HttpClient httpClient, URI location, JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
     {
-        this(httpClient, location, false, false, downstreamStatsRequestJsonCodec);
+        this(httpClient, location, false, false, downstreamStatsRequestJsonCodec, null, Optional.empty(), null);
     }
 
-    public HttpRpcShuffleClient(HttpClient httpClient, URI location, boolean isEnableGracefulShutdown, boolean isEnableRetryForFailedSplits, JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec)
+    public HttpRpcShuffleClient(HttpClient httpClient, URI location, boolean isEnableGracefulShutdown, boolean isEnableRetryForFailedSplits, JsonCodec<DownstreamStatsRequest> downstreamStatsRequestJsonCodec, EventListenerManager eventListenerManager, Optional<TaskId> taskId, TaskMonitor taskMonitor)
     {
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.location = requireNonNull(location, "location is null");
         this.isEnableGracefulShutdown = isEnableGracefulShutdown;
         this.isEnableRetryForFailedSplits = isEnableRetryForFailedSplits;
         this.downstreamStatsRequestJsonCodec = downstreamStatsRequestJsonCodec;
+        this.eventListenerManager = eventListenerManager;
+        this.taskId = taskId;
+        this.taskMonitor = taskMonitor;
+        this.objectMapper = new ObjectMapper();
     }
 
     @Override
@@ -127,6 +141,20 @@ public final class HttpRpcShuffleClient
                 if (familyForStatusCode(response.getStatusCode()) != HttpStatus.Family.SUCCESSFUL) {
                     log.debug("Unexpected sendDownstreamStats response code: %s", response.getStatusCode());
                 }
+
+                if (response.getStatusCode() == HttpStatus.NO_CONTENT.code()) {
+                    try {
+                        if (taskId.isPresent()) {
+                            String extraInfoJson = objectMapper.writeValueAsString(new IntermediateStatsRecords(taskMonitor.getOutputBufferUtilization(taskId.get())));
+                            String[] paths = location.getPath().split("/");
+                            eventListenerManager.trackTaskRelations(taskId.get(), "INTERMEDIATE_TASK_STATS", paths[paths.length - 3], paths[paths.length - 1], extraInfoJson);
+                        }
+                    }
+                    catch (Exception e) {
+                        log.error(e);
+                    }
+                }
+
                 return null;
             }
         });

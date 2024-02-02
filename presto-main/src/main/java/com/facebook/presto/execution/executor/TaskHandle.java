@@ -18,6 +18,8 @@ import com.facebook.presto.execution.SplitConcurrencyController;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.buffer.OutputBuffer;
 import com.facebook.presto.server.DownstreamStatsRecords;
+import com.facebook.presto.spi.ConnectorSplit;
+import com.facebook.presto.split.RemoteSplit;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.Duration;
@@ -27,10 +29,12 @@ import javax.annotation.concurrent.ThreadSafe;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.DoubleSupplier;
@@ -65,6 +69,7 @@ public class TaskHandle
     private AtomicBoolean anySplitProcessed = new AtomicBoolean(false);
     private boolean enableGracefulShutdown;
     private boolean enableRetryForFailedSplits;
+    private Set<RemoteSplit> remoteSplitSet = new HashSet<>();
 
     @VisibleForTesting
     public TaskHandle(
@@ -160,6 +165,13 @@ public class TaskHandle
             return false;
         }
         queuedLeafSplits.add(split);
+
+        ConnectorSplit connectorSplit = split.getScheduledSplit().getSplit().getConnectorSplit();
+        if (connectorSplit instanceof RemoteSplit) {
+            RemoteSplit remoteSplit = (RemoteSplit) connectorSplit;
+            remoteSplitSet.add(remoteSplit);
+        }
+
         return true;
     }
 
@@ -263,6 +275,11 @@ public class TaskHandle
     public synchronized int getQueuedSplitSize()
     {
         return queuedLeafSplits.size();
+    }
+
+    public double getOutputBufferUtilization()
+    {
+        return utilizationSupplier.getAsDouble();
     }
 
     public synchronized void splitComplete(PrioritizedSplitRunner split)

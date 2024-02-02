@@ -529,7 +529,8 @@ public class TestTaskExecutor
                 Ticker.systemTicker(),
                 false,
                 false,
-                new TestingEventListenerManager());
+                new TestingEventListenerManager(),
+                null);
         taskExecutor.start();
 
         try {

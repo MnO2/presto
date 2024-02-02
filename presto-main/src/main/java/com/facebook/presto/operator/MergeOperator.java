@@ -162,6 +162,7 @@ public class MergeOperator
 
         RemoteSplit remoteSplit = (RemoteSplit) split.getConnectorSplit();
         ExchangeClient exchangeClient = closer.register(taskExchangeClientManager.createExchangeClient(operatorContext.localSystemMemoryContext()));
+        exchangeClient.setTaskId(operatorContext.getDriverContext().getPipelineContext().getTaskContext().getTaskId());
         exchangeClient.addLocation(remoteSplit.getLocation().toURI(), remoteSplit.getRemoteSourceTaskId());
         exchangeClient.noMoreLocations();
         pageProducers.add(exchangeClient.pages()

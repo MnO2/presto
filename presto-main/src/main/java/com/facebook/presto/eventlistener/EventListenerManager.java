@@ -138,4 +138,11 @@ public class EventListenerManager
             configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name(), "", "", serializedBufferInfoWithDownstreamStatsRecordList));
         }
     }
+
+    public void trackTaskRelations(TaskId taskId, String tag, String upstreamTaskId, String upstreamOutputBufferId, String extraInfo)
+    {
+        if (configuredEventListener.get().isPresent()) {
+            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), tag, upstreamTaskId, upstreamOutputBufferId, extraInfo));
+        }
+    }
 }

@@ -50,6 +50,7 @@ import com.facebook.presto.cost.HistoryBasedPlanStatisticsManager;
 import com.facebook.presto.cost.ScalarStatsCalculator;
 import com.facebook.presto.cost.StatsNormalizer;
 import com.facebook.presto.event.SplitMonitor;
+import com.facebook.presto.event.TaskMonitor;
 import com.facebook.presto.execution.ExecutionFailureInfo;
 import com.facebook.presto.execution.ExplainAnalyzeContext;
 import com.facebook.presto.execution.LocationFactory;
@@ -669,6 +670,7 @@ public class ServerMainModule
 
         // split monitor
         binder.bind(SplitMonitor.class).in(Scopes.SINGLETON);
+        binder.bind(TaskMonitor.class).in(Scopes.SINGLETON);
 
         // Determine the NodeVersion
         NodeVersion nodeVersion = new NodeVersion(serverConfig.getPrestoVersion());
