@@ -128,21 +128,21 @@ public class EventListenerManager
     public void trackPreemptionLifeCycle(TaskId taskId, QueryRecoveryState queryRecoveryState, String downstreamStatsJson)
     {
         if (configuredEventListener.get().isPresent()) {
-            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name(), "", "", downstreamStatsJson));
+            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name(), "", "", downstreamStatsJson, 0));
         }
     }
 
-    public void trackOutputBufferInfo(TaskId taskId, QueryRecoveryState queryRecoveryState, String serializedBufferInfoWithDownstreamStatsRecordList)
+    public void trackOutputBufferInfo(TaskId taskId, QueryRecoveryState queryRecoveryState, String serializedBufferInfoWithDownstreamStatsRecordList, long gracefulShutdownRequestTime)
     {
         if (configuredEventListener.get().isPresent()) {
-            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name(), "", "", serializedBufferInfoWithDownstreamStatsRecordList));
+            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), queryRecoveryState.name(), "", "", serializedBufferInfoWithDownstreamStatsRecordList, gracefulShutdownRequestTime));
         }
     }
 
     public void trackTaskRelations(TaskId taskId, String tag, String upstreamTaskId, String upstreamOutputBufferId, String extraInfo)
     {
         if (configuredEventListener.get().isPresent()) {
-            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), tag, upstreamTaskId, upstreamOutputBufferId, extraInfo));
+            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), tag, upstreamTaskId, "", extraInfo, Long.parseLong(upstreamOutputBufferId)));
         }
     }
 }

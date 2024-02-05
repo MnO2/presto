@@ -292,6 +292,21 @@ public class MultilevelSplitQueue
         }
     }
 
+    public List<Integer> levelSizes()
+    {
+        List<Integer> result = new ArrayList<>();
+        lock.lock();
+        try {
+            for (PriorityQueue<PrioritizedSplitRunner> level : levelWaitingSplits) {
+                result.add(level.size());
+            }
+            return result;
+        }
+        finally {
+            lock.unlock();
+        }
+    }
+
     public static int computeLevel(long threadUsageNanos)
     {
         long seconds = NANOSECONDS.toSeconds(threadUsageNanos);

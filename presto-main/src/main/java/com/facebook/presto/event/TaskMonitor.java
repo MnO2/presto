@@ -15,12 +15,15 @@ package com.facebook.presto.event;
 
 import com.facebook.presto.execution.TaskId;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 public class TaskMonitor
 {
     ConcurrentMap<TaskId, Double> utilizations = new ConcurrentHashMap<>();
+    ConcurrentMap<TaskId, List<Integer>> taskId2levelSizes = new ConcurrentHashMap<>();
     public void updateOutputBufferUtilization(TaskId taskId, double utilization)
     {
         utilizations.put(taskId, utilization);
@@ -29,5 +32,15 @@ public class TaskMonitor
     public double getOutputBufferUtilization(TaskId taskId)
     {
         return utilizations.getOrDefault(taskId, 0.0);
+    }
+
+    public void updateLevelSizes(TaskId taskId, List<Integer> levelSizes)
+    {
+        taskId2levelSizes.put(taskId, levelSizes);
+    }
+
+    public List<Integer> getLevelSizes(TaskId taskId)
+    {
+        return taskId2levelSizes.getOrDefault(taskId, new ArrayList<>());
     }
 }

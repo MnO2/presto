@@ -25,8 +25,9 @@ public class GracefulPreemptionEvent
     private final String outputBufferId;
     private final String upstreamOutputBufferId;
     private final String extraInfo;
+    private long outputBufferSize;
 
-    public GracefulPreemptionEvent(String queryId, String taskId, long eventTime, String state, String outputBufferId, String upstreamOutputBufferId, String extraInfo)
+    public GracefulPreemptionEvent(String queryId, String taskId, long eventTime, String state, String outputBufferId, String upstreamOutputBufferId, String extraInfo, long outputBufferSize)
     {
         this.queryId = queryId;
         this.taskId = taskId;
@@ -35,6 +36,7 @@ public class GracefulPreemptionEvent
         this.outputBufferId = outputBufferId;
         this.upstreamOutputBufferId = upstreamOutputBufferId;
         this.extraInfo = extraInfo;
+        this.outputBufferSize = outputBufferSize;
     }
 
     public String getQueryId()
@@ -70,5 +72,10 @@ public class GracefulPreemptionEvent
     public String getExtraInfo()
     {
         return extraInfo;
+    }
+
+    public long getOutputBufferSize()
+    {
+        return outputBufferSize;
     }
 }

@@ -208,6 +208,7 @@ public class TaskExecutor
     private AtomicBoolean noTaskAtGracefulShutdown = new AtomicBoolean(false);
     private boolean enableGracefulShutdown;
     private boolean enableRetryForFailedSplits;
+    private long gracefulShutdownRequestTime;
 
     @Inject
     public TaskExecutor(TaskManagerConfig config, EmbedVersion embedVersion, MultilevelSplitQueue splitQueue, QueryManagerConfig queryManagerConfig, EventListenerManager eventListenerManager, TaskMonitor taskMonitor)
@@ -307,6 +308,7 @@ public class TaskExecutor
     {
         //FIXME this is just to test scribe
         checkState(enableGracefulShutdown || enableRetryForFailedSplits, "gracefulShutdown should only be called when enableGracefulShutdown or enableRetryForFailedSplits is set to true");
+        gracefulShutdownRequestTime = System.currentTimeMillis();
         currentTasksSnapshot.stream().forEach(taskHandle -> taskHandle.gracefulShutdown());
         //wait for running splits to be over
         long waitTimeMillis = 5; // Wait for 5 milliseconds between checks to avoid cpu spike
@@ -370,7 +372,7 @@ public class TaskExecutor
                                     List<DownstreamStatsRecords> downstreamStatsRecords = taskHandle.getDownstreamStats();
                                     List<BufferInfoWithDownstreamStatsRecord> bufferInfoWithDownstreamStatsRecordList = unfinishedBufferInfoAndDownstreamStats(outputBuffer.getInfo(), downstreamStatsRecords);
                                     String serializedBufferInfoWithDownstreamStatsRecordList = mapper.writeValueAsString(bufferInfoWithDownstreamStatsRecordList);
-                                    eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, serializedBufferInfoWithDownstreamStatsRecordList);
+                                    eventListenerManager.trackOutputBufferInfo(taskHandle.getTaskId(), QueryRecoveryState.WAITING_FOR_OUTPUT_BUFFER, serializedBufferInfoWithDownstreamStatsRecordList, gracefulShutdownRequestTime);
 
                                     log.warn("GracefulShutdown:: Waiting for output buffer to be empty for task- %s, bufferInfoWithDownstreamStatsRecordList = %s", taskId, serializedBufferInfoWithDownstreamStatsRecordList);
                                     Thread.sleep(5000);
@@ -877,10 +879,12 @@ public class TaskExecutor
                         else {
                             if (blocked.isDone()) {
                                 taskMonitor.updateOutputBufferUtilization(split.getTaskHandle().getTaskId(), split.getTaskHandle().getOutputBufferUtilization());
+                                taskMonitor.updateLevelSizes(split.getTaskHandle().getTaskId(), waitingSplits.levelSizes());
                                 waitingSplits.offer(split);
                             }
                             else {
                                 taskMonitor.updateOutputBufferUtilization(split.getTaskHandle().getTaskId(), split.getTaskHandle().getOutputBufferUtilization());
+                                taskMonitor.updateLevelSizes(split.getTaskHandle().getTaskId(), waitingSplits.levelSizes());
                                 blockedSplits.put(split, blocked);
                                 blocked.addListener(() -> {
                                     // reset the level priority to prevent previously-blocked splits from starving existing splits
