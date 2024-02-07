@@ -22,14 +22,17 @@ public class IntermediateStatsRecords
 {
     private double outputBufferUtilization;
     private List<Integer> levelSizes;
+    private List<Long> fullGcTimes;
 
     @JsonCreator
     public IntermediateStatsRecords(
             @JsonProperty("outputBufferUtilization") double outputBufferUtilization,
-            @JsonProperty("levelSizes") List<Integer> levelSizes)
+            @JsonProperty("levelSizes") List<Integer> levelSizes,
+            @JsonProperty("fullGcTimes") List<Long> fullGcTimes)
     {
         this.outputBufferUtilization = outputBufferUtilization;
         this.levelSizes = levelSizes;
+        this.fullGcTimes = fullGcTimes;
     }
 
     @JsonProperty
@@ -42,5 +45,11 @@ public class IntermediateStatsRecords
     public List<Integer> getLevelSizes()
     {
         return levelSizes;
+    }
+
+    @JsonProperty
+    public List<Long> getFullGcTimes()
+    {
+        return fullGcTimes;
     }
 }

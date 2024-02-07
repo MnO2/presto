@@ -145,7 +145,7 @@ public final class HttpRpcShuffleClient
                 if (response.getStatusCode() == HttpStatus.NO_CONTENT.code()) {
                     try {
                         if (taskId.isPresent()) {
-                            String extraInfoJson = objectMapper.writeValueAsString(new IntermediateStatsRecords(taskMonitor.getOutputBufferUtilization(taskId.get()), taskMonitor.getLevelSizes(taskId.get())));
+                            String extraInfoJson = objectMapper.writeValueAsString(new IntermediateStatsRecords(taskMonitor.getOutputBufferUtilization(taskId.get()), taskMonitor.getLevelSizes(taskId.get()), taskMonitor.getFullGcTimes()));
                             String[] paths = location.getPath().split("/");
                             eventListenerManager.trackTaskRelations(taskId.get(), "INTERMEDIATE_TASK_STATS", paths[paths.length - 3], paths[paths.length - 1], extraInfoJson);
                         }

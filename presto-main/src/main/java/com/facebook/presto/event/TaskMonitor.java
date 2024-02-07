@@ -16,6 +16,7 @@ package com.facebook.presto.event;
 import com.facebook.presto.execution.TaskId;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -24,6 +25,7 @@ public class TaskMonitor
 {
     ConcurrentMap<TaskId, Double> utilizations = new ConcurrentHashMap<>();
     ConcurrentMap<TaskId, List<Integer>> taskId2levelSizes = new ConcurrentHashMap<>();
+    LinkedList<Long> fullGcTimes = new LinkedList<>();
     public void updateOutputBufferUtilization(TaskId taskId, double utilization)
     {
         utilizations.put(taskId, utilization);
@@ -42,5 +44,18 @@ public class TaskMonitor
     public List<Integer> getLevelSizes(TaskId taskId)
     {
         return taskId2levelSizes.getOrDefault(taskId, new ArrayList<>());
+    }
+
+    public void updateFullGcTime()
+    {
+        fullGcTimes.add(System.currentTimeMillis());
+        while (fullGcTimes.size() > 5) {
+            fullGcTimes.poll();
+        }
+    }
+
+    public List<Long> getFullGcTimes()
+    {
+        return fullGcTimes;
     }
 }

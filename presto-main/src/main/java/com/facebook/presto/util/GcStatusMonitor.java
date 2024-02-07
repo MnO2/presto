@@ -15,6 +15,7 @@ package com.facebook.presto.util;
 
 import com.facebook.airlift.log.Logger;
 import com.facebook.airlift.stats.GarbageCollectionNotificationInfo;
+import com.facebook.presto.event.TaskMonitor;
 import com.facebook.presto.execution.SqlTask;
 import com.facebook.presto.execution.SqlTaskIoStats;
 import com.facebook.presto.execution.SqlTaskManager;
@@ -53,11 +54,13 @@ public class GcStatusMonitor
     private static final String GC_NOTIFICATION_TYPE = "com.sun.management.gc.notification";
     private final NotificationListener notificationListener = (notification, ignored) -> onNotification(notification);
     private final SqlTaskManager sqlTaskManager;
+    private final TaskMonitor taskMonitor;
 
     @Inject
-    public GcStatusMonitor(SqlTaskManager sqlTaskManager)
+    public GcStatusMonitor(SqlTaskManager sqlTaskManager, TaskMonitor taskMonitor)
     {
         this.sqlTaskManager = requireNonNull(sqlTaskManager, "sqlTaskManager must not be null");
+        this.taskMonitor = taskMonitor;
     }
 
     @PostConstruct
@@ -108,6 +111,7 @@ public class GcStatusMonitor
     private void onMajorGc()
     {
         try {
+            taskMonitor.updateFullGcTime();
             logActiveTasks();
         }
         catch (Throwable throwable) {
