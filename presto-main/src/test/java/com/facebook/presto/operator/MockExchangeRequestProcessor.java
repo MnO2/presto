@@ -223,7 +223,7 @@ public class MockExchangeRequestProcessor
             // update sequence id
             long nextToken = token.get() + responsePages.size();
 
-            BufferResult bufferResult = new BufferResult(TASK_INSTANCE_ID, token.get(), nextToken, false, responsePages);
+            BufferResult bufferResult = new BufferResult(TASK_INSTANCE_ID, token.get(), nextToken, false, responsePages, 0);
             token.set(nextToken);
 
             return bufferResult;

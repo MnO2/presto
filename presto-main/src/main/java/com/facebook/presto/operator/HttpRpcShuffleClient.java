@@ -56,6 +56,7 @@ import static com.facebook.airlift.http.client.ResponseHandlerUtils.propagate;
 import static com.facebook.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
 import static com.facebook.airlift.http.client.StatusResponseHandler.createStatusResponseHandler;
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES_TYPE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFERED_BYTES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_GRACEFUL_SHUTDOWN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_SIZE;
@@ -230,7 +231,8 @@ public final class HttpRpcShuffleClient
                             getToken(request, response),
                             getNextToken(request, response),
                             getComplete(request, response),
-                            getGracefulShutdown(request, response, isEnableGracefulShutdown, isEnableGracefulShutdown));
+                            getGracefulShutdown(request, response, isEnableGracefulShutdown, isEnableGracefulShutdown),
+                            getBufferedBytes(request, response));
                 }
 
                 // otherwise we must have gotten an OK response, everything else is considered fatal
@@ -276,10 +278,11 @@ public final class HttpRpcShuffleClient
                 long nextToken = getNextToken(request, response);
                 boolean complete = getComplete(request, response);
                 boolean gracefulShutdown = getGracefulShutdown(request, response, isEnableGracefulShutdown, isEnableRetryForFailedSplits);
+                long bufferedBytes = getBufferedBytes(request, response);
 
                 try (SliceInput input = new InputStreamSliceInput(response.getInputStream())) {
                     List<SerializedPage> pages = ImmutableList.copyOf(readSerializedPages(input));
-                    return createPagesResponse(taskInstanceId, token, nextToken, pages, complete, gracefulShutdown);
+                    return createPagesResponse(taskInstanceId, token, nextToken, pages, complete, gracefulShutdown, bufferedBytes);
                 }
                 catch (IOException e) {
                     throw new RuntimeException(e);
@@ -341,6 +344,15 @@ public final class HttpRpcShuffleClient
             else {
                 return false;
             }
+        }
+
+        private static long getBufferedBytes(Request request, Response response)
+        {
+            String bufferedBytes = response.getHeader(PRESTO_BUFFERED_BYTES);
+            if (bufferedBytes == null) {
+                throw new PageTransportErrorException(HostAddress.fromUri(request.getUri()), format("Expected %s header", PRESTO_BUFFERED_BYTES));
+            }
+            return Long.parseLong(bufferedBytes);
         }
 
         private static boolean mediaTypeMatches(String value, MediaType range)

@@ -67,7 +67,8 @@ public final class ThriftRpcShuffleClient
                         result.getNextToken(),
                         result.getSerializedPages(),
                         result.isBufferComplete(),
-                        false),
+                        false,
+                        0),
                 directExecutor());
     }
 

@@ -29,6 +29,7 @@ import com.facebook.presto.server.thrift.ThriftTaskClient;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.page.PageCodecMarker;
 import com.facebook.presto.spi.page.SerializedPage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -48,14 +49,17 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.common.block.PageBuilderStatus.DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
@@ -144,6 +148,10 @@ public class ExchangeClient
     private long fastDrainingStart;
     private ExchangeClientStats exchangeClientStats;
     private boolean lastAnyPendingShuttingDownClient;
+    private final ObjectMapper objectMapper;
+    private final Queue<Long> pollPageTimes = new ConcurrentLinkedQueue<>();
+    private final Queue<Long> scheduleRequestTimes = new ConcurrentLinkedQueue<>();
+    private final Queue<Long> fanOutCount = new ConcurrentLinkedQueue<>();
 
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
@@ -189,6 +197,7 @@ public class ExchangeClient
         this.taskMonitor = taskMonitor;
         this.nodeStatusNotifier = nodeStatusNotifier;
         this.exchangeClientStats = exchangeClientStats;
+        this.objectMapper = new ObjectMapper();
     }
 
     public ExchangeClientStatus getStatus()
@@ -332,6 +341,11 @@ public class ExchangeClient
 
         throwIfFailed();
 
+        while (pollPageTimes.size() >= 10) {
+            pollPageTimes.poll();
+        }
+        pollPageTimes.add(System.currentTimeMillis());
+
         if (closed.get()) {
             return null;
         }
@@ -472,12 +486,23 @@ public class ExchangeClient
         if (neededBytes <= 0) {
             return;
         }
+
+        while (scheduleRequestTimes.size() >= 10) {
+            scheduleRequestTimes.poll();
+        }
+        scheduleRequestTimes.add(System.currentTimeMillis());
+
         long averageResponseSize = max(1, responseSizeExponentialMovingAverage.get());
         int clientCount = (int) ((1.0 * neededBytes / averageResponseSize) * concurrentRequestMultiplier);
         clientCount = max(clientCount, 1);
 
         int pendingClients = allClients.size() - queuedClients.size() - completedClients.size();
         clientCount -= pendingClients;
+
+        while (fanOutCount.size() >= 10) {
+            fanOutCount.poll();
+        }
+        fanOutCount.add(System.currentTimeMillis());
 
         for (int i = 0; i < clientCount; ) {
             PageBufferClient client = queuedClients.poll();
@@ -492,7 +517,28 @@ public class ExchangeClient
 
             DataSize max = new DataSize(min(averageResponseSize * 2, maxResponseSize.toBytes()), BYTE);
             client.scheduleRequest(max);
+
+            if (client.getLastRequestScheduledTime().isPresent()) {
+                exchangeClientStats.getUpstreamCallIntervalTime().add(client.getLastRequestScheduledTime().get());
+            }
             i++;
+        }
+
+        try {
+            if (taskId.isPresent()) {
+                List<List<UpstreamOutputBufferStats>> upstreamOutputBufferStatsList = queuedClients.stream().map(c -> c.getUpstreamOutputBufferStats()).collect(Collectors.toList());
+                List<List<Long>> delayNanoSeconds = queuedClients.stream().map(c -> c.getDelayNanos()).collect(Collectors.toList());
+                List<Long> pollPageTimesList = pollPageTimes.stream().collect(Collectors.toList());
+                List<Long> scheduledRequestTimesList = scheduleRequestTimes.stream().collect(Collectors.toList());
+                List<Long> fanOutCountList = fanOutCount.stream().collect(Collectors.toList());
+
+                ExchangeClientDebugStats debugStats = new ExchangeClientDebugStats(upstreamOutputBufferStatsList, pollPageTimesList, scheduledRequestTimesList, fanOutCountList, delayNanoSeconds, averageResponseSize);
+                String extraInfoJson = objectMapper.writeValueAsString(debugStats);
+                eventListenerManager.trackExchangeClientStats(taskId.get(), "INTERMEDIATE_TASK_EXCHANGE_CLIENT_STATS", extraInfoJson);
+            }
+        }
+        catch (Exception e) {
+            log.error(e);
         }
     }
 

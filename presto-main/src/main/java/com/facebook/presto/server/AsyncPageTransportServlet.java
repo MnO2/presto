@@ -47,6 +47,7 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import static com.facebook.airlift.concurrent.MoreFutures.addTimeout;
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFERED_BYTES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_GRACEFUL_SHUTDOWN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_SIZE;
@@ -218,6 +219,7 @@ public class AsyncPageTransportServlet
                         response.setHeader(PRESTO_TASK_INSTANCE_ID, bufferResult.getTaskInstanceId());
                         response.setHeader(PRESTO_PAGE_TOKEN, String.valueOf(bufferResult.getToken()));
                         response.setHeader(PRESTO_PAGE_NEXT_TOKEN, String.valueOf(bufferResult.getNextToken()));
+                        response.setHeader(PRESTO_BUFFERED_BYTES, String.valueOf(bufferResult.getBufferedBytes()));
 
                         if (shutdownHandler.getNoTaskAtGracefulShutdown().get()) {
                             response.setHeader(PRESTO_BUFFER_COMPLETE, String.valueOf(true));

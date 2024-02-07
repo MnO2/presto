@@ -376,7 +376,7 @@ class ClientBuffer
             }
             result.add(page.getSerializedPage());
         }
-        return new BufferResult(taskInstanceId, sequenceId, sequenceId + result.size(), false, result);
+        return new BufferResult(taskInstanceId, sequenceId, sequenceId + result.size(), false, result, bufferedBytes.get());
     }
 
     /**

@@ -398,7 +398,7 @@ public class SpoolingOutputBuffer
 
         ListenableFuture<BufferResult> resultFuture = transform(memoryPages, input -> {
             long newSequenceId = startSequenceId + input.size();
-            return new BufferResult(taskInstanceId, startSequenceId, newSequenceId, false, input);
+            return new BufferResult(taskInstanceId, startSequenceId, newSequenceId, false, input, totalInMemoryBytes.get());
         }, executor);
 
         return catchingAsync(resultFuture, Exception.class, e -> {

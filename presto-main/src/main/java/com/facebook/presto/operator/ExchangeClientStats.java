@@ -20,6 +20,7 @@ import org.weakref.jmx.Nested;
 import javax.annotation.concurrent.ThreadSafe;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 @ThreadSafe
 public class ExchangeClientStats
@@ -27,6 +28,7 @@ public class ExchangeClientStats
     private int shuttingDownClientCount;
     private int pendingShuttingDownClientCount;
     private final TimeStat fastDrainingTime = new TimeStat(MILLISECONDS);
+    private final TimeStat upstreamCallIntervalTime = new TimeStat(NANOSECONDS);
 
     public void setShuttingDownClientCount(int shuttingDownClientCount)
     {
@@ -47,13 +49,18 @@ public class ExchangeClientStats
 
     @Managed
     @Nested
+    public TimeStat getUpstreamCallIntervalTime()
+    {
+        return upstreamCallIntervalTime;
+    }
+
+    @Managed
     public int getShuttingDownClientCount()
     {
         return shuttingDownClientCount;
     }
 
     @Managed
-    @Nested
     public int getPendingShuttingDownClientCount()
     {
         return pendingShuttingDownClientCount;

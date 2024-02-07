@@ -28,7 +28,7 @@ public class BufferResult
 {
     public static BufferResult emptyResults(String taskInstanceId, long token, boolean bufferComplete)
     {
-        return new BufferResult(taskInstanceId, token, token, bufferComplete, ImmutableList.of());
+        return new BufferResult(taskInstanceId, token, token, bufferComplete, ImmutableList.of(), 0);
     }
 
     private final String taskInstanceId;
@@ -36,13 +36,15 @@ public class BufferResult
     private final long nextToken;
     private final boolean bufferComplete;
     private final List<SerializedPage> serializedPages;
+    private final long bufferedBytes;
 
     public BufferResult(
             String taskInstanceId,
             long token,
             long nextToken,
             boolean bufferComplete,
-            List<SerializedPage> serializedPages)
+            List<SerializedPage> serializedPages,
+            long bufferedBytes)
     {
         checkArgument(!isNullOrEmpty(taskInstanceId), "taskInstanceId is null");
 
@@ -51,6 +53,7 @@ public class BufferResult
         this.nextToken = nextToken;
         this.bufferComplete = bufferComplete;
         this.serializedPages = ImmutableList.copyOf(requireNonNull(serializedPages, "serializedPages is null"));
+        this.bufferedBytes = bufferedBytes;
     }
 
     public String getTaskInstanceId()
@@ -76,6 +79,11 @@ public class BufferResult
     public List<SerializedPage> getSerializedPages()
     {
         return serializedPages;
+    }
+
+    public long getBufferedBytes()
+    {
+        return bufferedBytes;
     }
 
     public int size()
@@ -120,6 +128,7 @@ public class BufferResult
                 .add("taskInstanceId", taskInstanceId)
                 .add("bufferComplete", bufferComplete)
                 .add("serializedPages", serializedPages)
+                .add("bufferedBytes", bufferedBytes)
                 .toString();
     }
 }

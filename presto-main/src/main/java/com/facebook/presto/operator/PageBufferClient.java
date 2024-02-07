@@ -44,6 +44,7 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Queue;
@@ -136,10 +137,13 @@ public final class PageBufferClient
     private final AtomicInteger requestsScheduled = new AtomicInteger();
     private final AtomicInteger requestsCompleted = new AtomicInteger();
     private final AtomicInteger requestsFailed = new AtomicInteger();
+    private final Queue<UpstreamOutputBufferStats> upstreamBufferedBytes = new ConcurrentLinkedQueue<>();
 
     private final Executor pageBufferClientCallbackExecutor;
     private static final MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
     private final NodeStatusNotificationManager nodeStatusNotifier;
+    private Optional<Long> lastRequestScheduledTime = Optional.empty();
+    private final Queue<Long> delayNanoSeconds = new ConcurrentLinkedQueue<>();
 
     public PageBufferClient(
             RpcShuffleClient resultClient,
@@ -247,6 +251,11 @@ public final class PageBufferClient
         return isFastDraining;
     }
 
+    public List<UpstreamOutputBufferStats> getUpstreamOutputBufferStats()
+    {
+        return upstreamBufferedBytes.stream().collect(Collectors.toList());
+    }
+
     @Override
     public void close()
     {
@@ -296,8 +305,30 @@ public final class PageBufferClient
             }
         }, delayNanos, NANOSECONDS);
 
+        while (delayNanoSeconds.size() >= 10) {
+            delayNanoSeconds.poll();
+        }
+        delayNanoSeconds.add(delayNanos);
+
+        lastRequestScheduledTime = Optional.of(System.nanoTime());
+
         lastUpdate = DateTime.now();
         requestsScheduled.incrementAndGet();
+    }
+
+    public List<Long> getDelayNanos()
+    {
+        return delayNanoSeconds.stream().collect(Collectors.toList());
+    }
+
+    public Optional<Duration> getLastRequestScheduledTime()
+    {
+        if (lastRequestScheduledTime.isPresent()) {
+            return Optional.of(Duration.nanosSince(lastRequestScheduledTime.get()));
+        }
+        else {
+            return Optional.empty();
+        }
     }
 
     private synchronized void initiateRequest(DataSize maxResponseSize)
@@ -435,6 +466,11 @@ public final class PageBufferClient
                         rowsRejected.addAndGet(rowCount);
                     }
                 }
+
+                while (upstreamBufferedBytes.size() >= 10) {
+                    upstreamBufferedBytes.poll();
+                }
+                upstreamBufferedBytes.add(new UpstreamOutputBufferStats(location.toString(), result.getBufferedBytes(), System.currentTimeMillis()));
                 requestsCompleted.incrementAndGet();
 
                 synchronized (PageBufferClient.this) {
@@ -609,14 +645,14 @@ public final class PageBufferClient
 
     public static class PagesResponse
     {
-        public static PagesResponse createPagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean complete, boolean gracefulShutdown)
+        public static PagesResponse createPagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean complete, boolean gracefulShutdown, long bufferedBytes)
         {
-            return new PagesResponse(taskInstanceId, token, nextToken, pages, complete, gracefulShutdown);
+            return new PagesResponse(taskInstanceId, token, nextToken, pages, complete, gracefulShutdown, bufferedBytes);
         }
 
-        public static PagesResponse createEmptyPagesResponse(String taskInstanceId, long token, long nextToken, boolean complete, boolean gracefulShutdown)
+        public static PagesResponse createEmptyPagesResponse(String taskInstanceId, long token, long nextToken, boolean complete, boolean gracefulShutdown, long bufferedBytes)
         {
-            return new PagesResponse(taskInstanceId, token, nextToken, ImmutableList.of(), complete, gracefulShutdown);
+            return new PagesResponse(taskInstanceId, token, nextToken, ImmutableList.of(), complete, gracefulShutdown, bufferedBytes);
         }
 
         private final String taskInstanceId;
@@ -625,8 +661,9 @@ public final class PageBufferClient
         private final List<SerializedPage> pages;
         private final boolean clientComplete;
         private final boolean gracefulShutdown;
+        private final long bufferedBytes;
 
-        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete, boolean gracefulShutdown)
+        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete, boolean gracefulShutdown, long bufferedBytes)
         {
             this.taskInstanceId = taskInstanceId;
             this.token = token;
@@ -634,6 +671,7 @@ public final class PageBufferClient
             this.pages = ImmutableList.copyOf(pages);
             this.clientComplete = clientComplete;
             this.gracefulShutdown = gracefulShutdown;
+            this.bufferedBytes = bufferedBytes;
         }
 
         public long getToken()
@@ -661,6 +699,11 @@ public final class PageBufferClient
             return gracefulShutdown;
         }
 
+        public long getBufferedBytes()
+        {
+            return bufferedBytes;
+        }
+
         public String getTaskInstanceId()
         {
             return taskInstanceId;
@@ -675,6 +718,7 @@ public final class PageBufferClient
                     .add("pagesSize", pages.size())
                     .add("clientComplete", clientComplete)
                     .add("gracefulShutdown", gracefulShutdown)
+                    .add("bufferedBytes", bufferedBytes)
                     .toString();
         }
     }

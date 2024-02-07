@@ -145,4 +145,11 @@ public class EventListenerManager
             configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), tag, upstreamTaskId, "", extraInfo, Long.parseLong(upstreamOutputBufferId)));
         }
     }
+
+    public void trackExchangeClientStats(TaskId taskId, String tag, String extraInfo)
+    {
+        if (configuredEventListener.get().isPresent()) {
+            configuredEventListener.get().get().trackGracefulPreemption(new GracefulPreemptionEvent(taskId.getQueryId().toString(), taskId.toString(), DateTime.now().getMillis(), tag, "", "", extraInfo, 0));
+        }
+    }
 }
