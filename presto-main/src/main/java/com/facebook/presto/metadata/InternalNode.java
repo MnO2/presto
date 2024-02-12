@@ -71,6 +71,7 @@ public class InternalNode
     private final NodeStatus nodeStatus;
     private final OptionalInt raftPort;
     private final NodePoolType poolType;
+    private final int totalBins = 10;
 
     public InternalNode(String nodeIdentifier, URI internalUri, NodeVersion nodeVersion, boolean coordinator)
     {
@@ -199,6 +200,12 @@ public class InternalNode
     public NodePoolType getPoolType()
     {
         return poolType;
+    }
+
+    @Override
+    public int getVirtualBin()
+    {
+        return (nodeIdentifier.hashCode() & 0xfffffff) % totalBins;
     }
 
     @Override

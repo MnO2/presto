@@ -72,24 +72,24 @@ public class NodeMapsResource
                         .map(FixedSubsetNodeSetSupplier.NodeSetAcquireRequest::toString)
                         .collect(Collectors.toList()),
                 queryNodeMaps.build(),
-                fixedSubsetNodeSetSupplier.computeFreeNodesInCluster().size());
+                fixedSubsetNodeSetSupplier.computeFreeBins().size());
     }
 
     public static class NodeMaps
     {
         private final List<String> pendingRequests;
         private final Map<String, Integer> queryNodesMap;
-        private final long idleNodeCount;
+        private final long idleBin;
 
         @JsonCreator
         public NodeMaps(
                 @JsonProperty("pendingRequests") List<String> pendingRequests,
                 @JsonProperty("queryNodesMap") Map<String, Integer> queryNodesMap,
-                @JsonProperty("idleNodeCount") long idleNodeCount)
+                @JsonProperty("idleBin") long idleBin)
         {
             this.pendingRequests = pendingRequests;
             this.queryNodesMap = queryNodesMap;
-            this.idleNodeCount = idleNodeCount;
+            this.idleBin = idleBin;
         }
 
         @JsonProperty
@@ -105,9 +105,9 @@ public class NodeMapsResource
         }
 
         @JsonProperty
-        public long getIdleNodeCount()
+        public long getIdleBin()
         {
-            return idleNodeCount;
+            return idleBin;
         }
     }
 }

@@ -33,7 +33,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -50,9 +50,11 @@ import java.util.stream.Collectors;
 import static com.facebook.presto.execution.scheduler.NodeSelectionHashStrategy.CONSISTENT_HASHING;
 import static com.facebook.presto.metadata.InternalNode.NodeStatus.ALIVE;
 import static com.facebook.presto.spi.NodeState.ACTIVE;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.lang.Math.ceil;
+import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 
 /**
@@ -70,10 +72,14 @@ public class FixedSubsetNodeSetSupplier
     private final NetworkLocationCache networkLocationCache;
     // TODO: Use Set<InternalNode>
     private final Map<QueryId, List<InternalNode>> queryNodesMap;
+    private final Map<QueryId, Integer> queryVirtualBinMap;
 
     private final Map<QueryId, Supplier<QueryState>> queryStateMap;
 
     private final ScheduledFuture<?> scheduledFuture;
+    private final int binCapacity = 2; // FIXME: hard code to be 2 for now
+    private final int totalBin = 10;
+    private final List<VirtualBinInfo> freeBins = new ArrayList<>();
 
     @Inject
     public FixedSubsetNodeSetSupplier(
@@ -84,10 +90,15 @@ public class FixedSubsetNodeSetSupplier
         this.nodeManager = nodeManager;
         this.networkLocationCache = new NetworkLocationCache(networkTopology);
         this.queryNodesMap = new ConcurrentHashMap<>();
+        this.queryVirtualBinMap = new ConcurrentHashMap<>();
         this.queryStateMap = new ConcurrentHashMap<>();
         this.pendingRequests = new PriorityQueue<>();
         // start loop to check pending node requests every second
         scheduledFuture = scheduledExecutorService.scheduleAtFixedRate(this::fulfillPendingRequests, 0, 100, TimeUnit.MILLISECONDS);
+
+        for (int i = 0; i < totalBin; i += 1) {
+            freeBins.add(new VirtualBinInfo(i, 0));
+        }
     }
 
     private void fulfillPendingRequests()
@@ -104,26 +115,33 @@ public class FixedSubsetNodeSetSupplier
             }
         }
 
-        List<InternalNode> freeNodes = computeFreeNodesInCluster();
+        List<VirtualBinInfo> freeBins = computeFreeBins();
+        Iterator<VirtualBinInfo> iter = freeBins.iterator();
 
         NodeSetAcquireRequest nodeSetAcquireRequest = pendingRequests.peek();
-        while (nodeSetAcquireRequest != null && nodeSetAcquireRequest.getCount() <= freeNodes.size()) {
+        while (nodeSetAcquireRequest != null && iter.hasNext()) {
             try {
-                List<InternalNode> nodesForQuery = new ArrayList<>();
-                for (int i = 0; i < nodeSetAcquireRequest.getCount(); i++) {
-                    nodesForQuery.add(freeNodes.remove(i));
-                }
-                // assign the nodes to this query
-                queryNodesMap.put(nodeSetAcquireRequest.getQueryId(), nodesForQuery);
-                // register the state supplier (used for bookeeping/cleanup)
-                queryStateMap.put(nodeSetAcquireRequest.getQueryId(), nodeSetAcquireRequest.getQueryStateSupplier());
-                // Let the query scheduler know that query can now execute
-                nodeSetAcquireRequest.getCompletableFuture().complete(null);
-                log.info("Successfully fulfilled nodeAcquireRequest=%s", nodeSetAcquireRequest);
+                VirtualBinInfo virtualBinInfo = iter.next();
 
-                // Move to the next request
-                pendingRequests.poll();
-                nodeSetAcquireRequest = pendingRequests.peek();
+                checkState(virtualBinInfo.getRunningQueryCount() <= 2, "virtualBinInfo running query count should be <= 2");
+                int restCapacity = binCapacity - virtualBinInfo.getRunningQueryCount();
+                for (int i = 0; nodeSetAcquireRequest != null && i < restCapacity; i++) {
+                    List<InternalNode> nodesForQuery = new ArrayList<>();
+                    List<InternalNode> freeNodes = getFreeNodesForBin(virtualBinInfo.getBinNum());
+                    nodesForQuery.addAll(freeNodes);
+                    // assign the nodes to this query
+                    queryNodesMap.put(nodeSetAcquireRequest.getQueryId(), nodesForQuery);
+                    queryVirtualBinMap.put(nodeSetAcquireRequest.getQueryId(), virtualBinInfo.getBinNum());
+                    // register the state supplier (used for bookeeping/cleanup)
+                    queryStateMap.put(nodeSetAcquireRequest.getQueryId(), nodeSetAcquireRequest.getQueryStateSupplier());
+                    // Let the query scheduler know that query can now execute
+                    nodeSetAcquireRequest.getCompletableFuture().complete(null);
+                    log.info("Successfully fulfilled nodeAcquireRequest=%s", nodeSetAcquireRequest);
+
+                    // Move to the next request
+                    pendingRequests.poll();
+                    nodeSetAcquireRequest = pendingRequests.peek();
+                }
             }
             catch (Exception ex) {
                 log.error("Exception in satisfying nodeAcquireRequest=%s, ex=%s", nodeSetAcquireRequest, ex);
@@ -131,17 +149,23 @@ public class FixedSubsetNodeSetSupplier
         }
     }
 
-    public List<InternalNode> computeFreeNodesInCluster()
+    public List<InternalNode> getFreeNodesForBin(int virtualBin)
     {
-        Set<InternalNode> allocatedNodes = queryNodesMap.values().stream()
-                .flatMap(Collection::stream)
-                .collect(Collectors.toSet());
-
         return nodeManager.getNodes(ACTIVE).stream()
                 .filter(node -> !node.isResourceManager() && !node.isCoordinator() && !node.isCatalogServer())
-                .filter(node -> !allocatedNodes.contains(node))
+                .filter(node -> node.getVirtualBin() == virtualBin)
                 .collect(Collectors.toList());
     }
+
+    public List<VirtualBinInfo> computeFreeBins()
+    {
+        Map<Integer, Long> allocatedBins = queryVirtualBinMap.values().stream()
+                .collect(Collectors.groupingBy(bin -> bin, Collectors.counting()));
+
+        // hard code the filter condition to be < 2 for now
+        return freeBins.stream().filter(binInfo -> allocatedBins.getOrDefault(binInfo.getBinNum(), 0L) < binCapacity).map(binInfo -> new VirtualBinInfo(binInfo.getBinNum(), toIntExact(allocatedBins.getOrDefault(binInfo.getBinNum(), 0L)))).collect(Collectors.toList());
+    }
+
     @Override
     public CompletableFuture<?> acquireNodes(QueryId queryId, int count, Supplier<QueryState> queryStateSupplier)
     {
@@ -158,6 +182,7 @@ public class FixedSubsetNodeSetSupplier
     {
         queryNodesMap.remove(queryId);
         queryStateMap.remove(queryId);
+        queryVirtualBinMap.remove(queryId);
         return CompletableFuture.completedFuture(null);
     }
 

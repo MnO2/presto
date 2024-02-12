@@ -26,6 +26,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 public class ServerConfig
 {
     public static final String POOL_TYPE = "pool_type";
+    public static final String VIRTUAL_BIN = "virtual_bin";
     private boolean resourceManager;
     private boolean resourceManagerEnabled;
     private boolean catalogServer;

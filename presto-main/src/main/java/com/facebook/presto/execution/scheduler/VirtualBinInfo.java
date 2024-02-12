@@ -11,33 +11,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.spi;
+package com.facebook.presto.execution.scheduler;
 
-import java.net.URI;
-
-public interface Node
+public class VirtualBinInfo
 {
-    String getHost();
+    private final int binNum;
+    private final int runningQueryCount;
 
-    HostAddress getHostAndPort();
+    public VirtualBinInfo(int binNum, int runningQueryCount)
+    {
+        this.binNum = binNum;
+        this.runningQueryCount = runningQueryCount;
+    }
 
-    /**
-     * @deprecated Connectors should not access the HTTP endpoints of other nodes.
-     */
-    @Deprecated
-    URI getHttpUri();
+    public int getBinNum()
+    {
+        return binNum;
+    }
 
-    String getNodeIdentifier();
-
-    String getVersion();
-
-    boolean isCoordinator();
-
-    boolean isResourceManager();
-
-    boolean isCatalogServer();
-
-    NodePoolType getPoolType();
-
-    int getVirtualBin();
+    public int getRunningQueryCount()
+    {
+        return runningQueryCount;
+    }
 }

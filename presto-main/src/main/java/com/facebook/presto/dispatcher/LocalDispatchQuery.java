@@ -201,7 +201,7 @@ public class LocalDispatchQuery
 
     private void waitForMinimumWorkers()
     {
-        int nodesToAcquire = computeNodesToAcquire();
+        int nodesToAcquire = 100; // always require 100 node for 1000 worker cluster with 10 bins
         CompletableFuture<?> waitForNodesFuture =
                 nodeScheduler.acquireNodes(stateMachine.getQueryId(), nodesToAcquire, stateMachine::getQueryState);
 
