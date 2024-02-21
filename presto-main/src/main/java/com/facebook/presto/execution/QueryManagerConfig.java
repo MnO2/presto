@@ -54,7 +54,7 @@ public class QueryManagerConfig
     private String ctePartitioningProviderCatalog = GlobalSystemConnector.NAME;
     private ExchangeMaterializationStrategy exchangeMaterializationStrategy = ExchangeMaterializationStrategy.NONE;
     private boolean useStreamingExchangeForMarkDistinct;
-    private boolean enableWorkerIsolation;
+    private boolean enableWorkerIsolation = true;
     private Duration minQueryExpireAge = new Duration(15, TimeUnit.MINUTES);
     private int maxQueryHistory = 100;
     private int maxQueryLength = 1_000_000;
