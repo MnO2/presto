@@ -32,7 +32,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.operator.ForScheduler;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.Node;
-import com.facebook.presto.spi.NodePoolType;
+import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
@@ -74,8 +74,6 @@ import static com.facebook.presto.execution.SqlStageExecution.createSqlStageExec
 import static com.facebook.presto.execution.scheduler.SourcePartitionedScheduler.newSourcePartitionedSchedulerAsStageScheduler;
 import static com.facebook.presto.execution.scheduler.TableWriteInfo.createTableWriteInfo;
 import static com.facebook.presto.spi.ConnectorId.isInternalSystemConnector;
-import static com.facebook.presto.spi.NodePoolType.INTERMEDIATE;
-import static com.facebook.presto.spi.NodePoolType.LEAF;
 import static com.facebook.presto.spi.StandardErrorCode.NO_NODES_AVAILABLE;
 import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SCALED_WRITER_DISTRIBUTION;
@@ -106,6 +104,7 @@ public class SectionExecutionFactory
     private final NodeScheduler nodeScheduler;
     private final int splitBatchSize;
     private final boolean isEnableWorkerIsolation;
+    private final int totalBins = 10;
 
     @Inject
     public SectionExecutionFactory(
@@ -173,7 +172,7 @@ public class SectionExecutionFactory
         // Only fetch a distribution once per section to ensure all stages see the same machine assignments
         Map<PartitioningHandle, NodePartitionMap> partitioningCache = new HashMap<>();
         TableWriteInfo tableWriteInfo = createTableWriteInfo(section.getPlan(), metadata, session);
-        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(section.getPlan());
+        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(session.getQueryId());
         List<StageExecutionAndScheduler> sectionStages = createStreamingLinkedStageExecutions(
                 session,
                 locationsConsumer,
@@ -283,7 +282,7 @@ public class SectionExecutionFactory
     {
         Map<PlanNodeId, SplitSource> splitSources = splitSourceFactory.createSplitSources(plan.getFragment(), session, tableWriteInfo);
         int maxTasksPerStage = getMaxTasksPerStage(session);
-        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(plan);
+        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(stageId.getQueryId());
         if (partitioningHandle.equals(SOURCE_DISTRIBUTION)) {
             // nodes are selected dynamically based on the constraints of the splits and the system load
             Map.Entry<PlanNodeId, SplitSource> entry = getOnlyElement(splitSources.entrySet());
@@ -407,14 +406,15 @@ public class SectionExecutionFactory
         }
     }
 
-    private Optional<Predicate<Node>> getNodePoolSelectionPredicate(StreamingSubPlan plan)
+    private Optional<Predicate<Node>> getNodePoolSelectionPredicate(QueryId queryId)
     {
-        if (!isEnableWorkerIsolation || plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution()) {
+        if (!isEnableWorkerIsolation) {
             //skipping node pool based selection for grouped execution
             return Optional.empty();
         }
-        NodePoolType workerPoolType = plan.getFragment().isLeaf() ? LEAF : INTERMEDIATE;
-        return Optional.of(node -> node.getPoolType().equals(workerPoolType));
+
+        int virtualBin = (queryId.hashCode() & 0xfffffff) % totalBins;
+        return Optional.of(node -> node.getVirtualBin() == virtualBin);
     }
 
     private static Optional<int[]> getBucketToPartition(
