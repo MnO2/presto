@@ -15,7 +15,15 @@ package com.facebook.presto.spi;
 
 public enum NodePoolType
 {
-    INTERMEDIATE,
-    LEAF,
-    DEFAULT;
+    DEFAULT,
+    BIN00,
+    BIN01,
+    BIN02,
+    BIN03,
+    BIN04,
+    BIN05,
+    BIN06,
+    BIN07,
+    BIN08,
+    BIN09,
 }

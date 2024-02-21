@@ -23,7 +23,6 @@ import java.util.Map;
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
 import static com.facebook.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
 import static com.facebook.presto.spi.NodePoolType.DEFAULT;
-import static com.facebook.presto.spi.NodePoolType.LEAF;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -82,7 +81,6 @@ public class TestServerConfig
                 .setResourceManager(true)
                 .setCatalogServer(true)
                 .setCatalogServerEnabled(true)
-                .setPoolType(LEAF)
                 .setClusterStatsExpirationDuration(new Duration(10, SECONDS))
                 .setNestedDataSerializationEnabled(false);
 

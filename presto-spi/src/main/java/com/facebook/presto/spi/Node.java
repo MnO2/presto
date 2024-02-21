@@ -38,4 +38,6 @@ public interface Node
     boolean isCatalogServer();
 
     NodePoolType getPoolType();
+
+    int getVirtualBin();
 }
