@@ -46,6 +46,8 @@ import static com.facebook.airlift.http.client.ResponseHandlerUtils.propagate;
 import static com.facebook.airlift.http.client.StatusResponseHandler.createStatusResponseHandler;
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES_TYPE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_LEFT_BYTES;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_LEFT_PAGES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_SIZE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_NEXT_TOKEN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_TOKEN;
@@ -188,10 +190,12 @@ public final class HttpRpcShuffleClient
                 long token = getToken(request, response);
                 long nextToken = getNextToken(request, response);
                 boolean complete = getComplete(request, response);
+                long leftBytes = getLeftBytes(request, response);
+                long leftPages = getLeftPages(request, response);
 
                 try (SliceInput input = new InputStreamSliceInput(response.getInputStream())) {
                     List<SerializedPage> pages = ImmutableList.copyOf(readSerializedPages(input));
-                    return createPagesResponse(taskInstanceId, token, nextToken, pages, complete);
+                    return createPagesResponse(taskInstanceId, token, nextToken, pages, complete, leftBytes, leftPages);
                 }
                 catch (IOException e) {
                     throw new RuntimeException(e);
@@ -239,6 +243,24 @@ public final class HttpRpcShuffleClient
                 throw new PageTransportErrorException(HostAddress.fromUri(request.getUri()), format("Expected %s header", PRESTO_BUFFER_COMPLETE));
             }
             return Boolean.parseBoolean(bufferComplete);
+        }
+
+        private static long getLeftBytes(Request request, Response response)
+        {
+            String leftBytes = response.getHeader(PRESTO_BUFFER_LEFT_BYTES);
+            if (leftBytes == null) {
+                throw new PageTransportErrorException(HostAddress.fromUri(request.getUri()), format("Expected %s header", PRESTO_BUFFER_LEFT_BYTES));
+            }
+            return Long.parseLong(leftBytes);
+        }
+
+        private static long getLeftPages(Request request, Response response)
+        {
+            String leftPages = response.getHeader(PRESTO_BUFFER_LEFT_PAGES);
+            if (leftPages == null) {
+                throw new PageTransportErrorException(HostAddress.fromUri(request.getUri()), format("Expected %s header", PRESTO_BUFFER_LEFT_PAGES));
+            }
+            return Long.parseLong(leftPages);
         }
 
         private static boolean mediaTypeMatches(String value, MediaType range)

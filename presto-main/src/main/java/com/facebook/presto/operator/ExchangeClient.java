@@ -36,10 +36,9 @@ import javax.annotation.concurrent.ThreadSafe;
 import java.io.Closeable;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Deque;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -83,7 +82,6 @@ public class ExchangeClient
 
     private final long bufferCapacity;
     private final DataSize maxResponseSize;
-    private final int concurrentRequestMultiplier;
     private final Duration maxErrorDuration;
     private final boolean acknowledgePages;
     private final HttpClient httpClient;
@@ -98,8 +96,9 @@ public class ExchangeClient
     private final Set<TaskId> removedRemoteSourceTaskIds = ConcurrentHashMap.newKeySet();
 
     @GuardedBy("this")
-    private final Deque<PageBufferClient> queuedClients = new LinkedList<>();
+    private final PriorityQueue<PageBufferClient> queuedClients = new PriorityQueue<>(new PageBufferClientComparator());
 
+    private final Set<PageBufferClient> pendingClients = newConcurrentHashSet();
     private final Set<PageBufferClient> completedClients = newConcurrentHashSet();
     private final Set<PageBufferClient> removedClients = newConcurrentHashSet();
     private final LinkedBlockingDeque<SerializedPage> pageBuffer = new LinkedBlockingDeque<>();
@@ -140,7 +139,6 @@ public class ExchangeClient
         checkArgument(responseSizeExponentialMovingAverageDecayingAlpha >= 0.0 && responseSizeExponentialMovingAverageDecayingAlpha <= 1.0, "responseSizeExponentialMovingAverageDecayingAlpha must be between 0 and 1: %s", responseSizeExponentialMovingAverageDecayingAlpha);
         this.bufferCapacity = bufferCapacity.toBytes();
         this.maxResponseSize = maxResponseSize;
-        this.concurrentRequestMultiplier = concurrentRequestMultiplier;
         this.maxErrorDuration = maxErrorDuration;
         this.acknowledgePages = acknowledgePages;
         this.httpClient = httpClient;
@@ -364,14 +362,11 @@ public class ExchangeClient
         if (neededBytes <= 0) {
             return;
         }
-        long averageResponseSize = max(1, responseSizeExponentialMovingAverage.get());
-        int clientCount = (int) ((1.0 * neededBytes / averageResponseSize) * concurrentRequestMultiplier);
-        clientCount = max(clientCount, 1);
 
-        int pendingClients = allClients.size() - queuedClients.size() - completedClients.size();
-        clientCount -= pendingClients;
+        long pendingFetchedBytes = pendingClients.stream().map(c -> c.getPendingMaxResponseSize().orElse(new DataSize(0, BYTE)).toBytes()).mapToLong(x -> x).sum();
+        long neededBytesLeft = neededBytes - pendingFetchedBytes;
 
-        for (int i = 0; i < clientCount; ) {
+        while (neededBytesLeft > 0) {
             PageBufferClient client = queuedClients.poll();
             if (client == null) {
                 // no more clients available
@@ -382,9 +377,14 @@ public class ExchangeClient
                 continue;
             }
 
-            DataSize max = new DataSize(min(averageResponseSize * 2, maxResponseSize.toBytes()), BYTE);
+            long fetchSize = DEFAULT_MAX_PAGE_SIZE_IN_BYTES;
+            if (client.getLeftBytes() > 0) {
+                fetchSize = client.getLeftBytes();
+            }
+            DataSize max = new DataSize(min(fetchSize, maxResponseSize.toBytes()), BYTE);
+            pendingClients.add(client);
+            neededBytesLeft -= max.toBytes();
             client.scheduleRequest(max);
-            i++;
         }
     }
 
@@ -462,6 +462,7 @@ public class ExchangeClient
 
     private synchronized void requestComplete(PageBufferClient client)
     {
+        pendingClients.remove(client);
         if (!queuedClients.contains(client)) {
             queuedClients.add(client);
         }
@@ -471,12 +472,14 @@ public class ExchangeClient
     private synchronized void clientFinished(PageBufferClient client)
     {
         requireNonNull(client, "client is null");
+        pendingClients.remove(client);
         completedClients.add(client);
         scheduleRequestIfNecessary();
     }
 
     private synchronized void clientFailed(PageBufferClient client, Throwable cause)
     {
+        pendingClients.remove(client);
         // ignore failure for removed clients
         if (removedClients.contains(client)) {
             return;

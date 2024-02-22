@@ -148,6 +148,6 @@ public class ThriftBufferResult
     @VisibleForTesting
     public BufferResult toBufferResult()
     {
-        return new BufferResult(taskInstanceId, token, nextToken, bufferComplete, getSerializedPages());
+        return new BufferResult(taskInstanceId, token, nextToken, bufferComplete, getSerializedPages(), 0, 0);
     }
 }

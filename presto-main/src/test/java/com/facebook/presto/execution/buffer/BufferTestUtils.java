@@ -82,7 +82,7 @@ public final class BufferTestUtils
                 false,
                 pages.stream()
                         .map(PAGES_SERDE::serialize)
-                        .collect(Collectors.toList()));
+                        .collect(Collectors.toList()), 0, 0);
     }
 
     public static Page createPage(int i)

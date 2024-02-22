@@ -51,6 +51,7 @@ public final class PrestoHeaders
     public static final String PRESTO_PAGE_NEXT_TOKEN = "X-Presto-Page-End-Sequence-Id";
     public static final String PRESTO_BUFFER_COMPLETE = "X-Presto-Buffer-Complete";
     public static final String PRESTO_PREFIX_URL = "X-Presto-Prefix-Url";
-
+    public static final String PRESTO_BUFFER_LEFT_BYTES = "X-Presto-Buffer-Left-Bytes";
+    public static final String PRESTO_BUFFER_LEFT_PAGES = "X-Presto-Buffer-Left-Pages";
     private PrestoHeaders() {}
 }

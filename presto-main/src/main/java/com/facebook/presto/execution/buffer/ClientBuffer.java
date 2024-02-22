@@ -362,16 +362,19 @@ class ClientBuffer
         long maxBytes = maxSize.toBytes();
         List<SerializedPage> result = new ArrayList<>();
         long bytes = 0;
-
+        long leftBytes = 0;
+        long leftPages = 0;
         for (SerializedPageReference page : pages) {
             bytes += page.getRetainedSizeInBytes();
             // break (and don't add) if this page would exceed the limit
             if (!result.isEmpty() && bytes > maxBytes) {
-                break;
+                leftBytes += page.getRetainedSizeInBytes();
+                leftPages += 1;
+                continue;
             }
             result.add(page.getSerializedPage());
         }
-        return new BufferResult(taskInstanceId, sequenceId, sequenceId + result.size(), false, result);
+        return new BufferResult(taskInstanceId, sequenceId, sequenceId + result.size(), false, result, leftBytes, leftPages);
     }
 
     /**

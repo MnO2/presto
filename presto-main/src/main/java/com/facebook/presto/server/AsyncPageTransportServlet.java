@@ -48,6 +48,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import static com.facebook.airlift.concurrent.MoreFutures.addTimeout;
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_LEFT_BYTES;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_LEFT_PAGES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_SIZE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_NEXT_TOKEN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_TOKEN;
@@ -214,6 +216,8 @@ public class AsyncPageTransportServlet
                         response.setHeader(PRESTO_PAGE_TOKEN, String.valueOf(bufferResult.getToken()));
                         response.setHeader(PRESTO_PAGE_NEXT_TOKEN, String.valueOf(bufferResult.getNextToken()));
                         response.setHeader(PRESTO_BUFFER_COMPLETE, String.valueOf(bufferResult.isBufferComplete()));
+                        response.setHeader(PRESTO_BUFFER_LEFT_BYTES, String.valueOf(bufferResult.getLeftBytes()));
+                        response.setHeader(PRESTO_BUFFER_LEFT_PAGES, String.valueOf(bufferResult.getLeftPages()));
 
                         List<SerializedPage> serializedPages = bufferResult.getSerializedPages();
                         if (serializedPages.isEmpty()) {

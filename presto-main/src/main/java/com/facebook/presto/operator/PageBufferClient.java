@@ -35,6 +35,7 @@ import javax.annotation.concurrent.ThreadSafe;
 import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.concurrent.Executor;
@@ -116,6 +117,10 @@ public final class PageBufferClient
     private final AtomicInteger requestsFailed = new AtomicInteger();
 
     private final Executor pageBufferClientCallbackExecutor;
+    private final AtomicLong leftPages = new AtomicLong();
+    private final AtomicLong leftBytes = new AtomicLong();
+    private final AtomicLong fetchCount = new AtomicLong();
+    private Optional<DataSize> pendingMaxResponseSize = Optional.empty();
 
     public PageBufferClient(
             RpcShuffleClient resultClient,
@@ -226,6 +231,7 @@ public final class PageBufferClient
         }
         scheduled = true;
 
+        pendingMaxResponseSize = Optional.of(maxResponseSize);
         // start before scheduling to include error delay
         backoff.startRequest();
 
@@ -314,6 +320,9 @@ public final class PageBufferClient
                         }
                     }
 
+                    leftBytes.set(result.getLeftBytes());
+                    leftPages.set(result.getLeftPages());
+                    fetchCount.incrementAndGet();
                     // add pages:
                     // addPages must be called regardless of whether pages is an empty list because
                     // clientCallback can keep stats of requests and responses. For example, it may
@@ -373,6 +382,11 @@ public final class PageBufferClient
                 handleFailure(t, resultFuture);
             }
         }, pageBufferClientCallbackExecutor);
+    }
+
+    public Optional<DataSize> getPendingMaxResponseSize()
+    {
+        return pendingMaxResponseSize;
     }
 
     private synchronized void sendDelete()
@@ -461,6 +475,16 @@ public final class PageBufferClient
         return true;
     }
 
+    public long getLeftBytes()
+    {
+        return leftBytes.get();
+    }
+
+    public long getFetchCount()
+    {
+        return fetchCount.get();
+    }
+
     @Override
     public int hashCode()
     {
@@ -490,14 +514,14 @@ public final class PageBufferClient
 
     public static class PagesResponse
     {
-        public static PagesResponse createPagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean complete)
+        public static PagesResponse createPagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean complete, long leftBytes, long leftPages)
         {
-            return new PagesResponse(taskInstanceId, token, nextToken, pages, complete);
+            return new PagesResponse(taskInstanceId, token, nextToken, pages, complete, leftBytes, leftPages);
         }
 
         public static PagesResponse createEmptyPagesResponse(String taskInstanceId, long token, long nextToken, boolean complete)
         {
-            return new PagesResponse(taskInstanceId, token, nextToken, ImmutableList.of(), complete);
+            return new PagesResponse(taskInstanceId, token, nextToken, ImmutableList.of(), complete, 0, 0);
         }
 
         private final String taskInstanceId;
@@ -505,14 +529,18 @@ public final class PageBufferClient
         private final long nextToken;
         private final List<SerializedPage> pages;
         private final boolean clientComplete;
+        private final long leftBytes;
+        private final long leftPages;
 
-        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete)
+        private PagesResponse(String taskInstanceId, long token, long nextToken, Iterable<SerializedPage> pages, boolean clientComplete, long leftBytes, long leftPages)
         {
             this.taskInstanceId = taskInstanceId;
             this.token = token;
             this.nextToken = nextToken;
             this.pages = ImmutableList.copyOf(pages);
             this.clientComplete = clientComplete;
+            this.leftBytes = leftBytes;
+            this.leftPages = leftPages;
         }
 
         public long getToken()
@@ -533,6 +561,16 @@ public final class PageBufferClient
         public boolean isClientComplete()
         {
             return clientComplete;
+        }
+
+        public long getLeftBytes()
+        {
+            return leftBytes;
+        }
+
+        public long getLeftPages()
+        {
+            return leftPages;
         }
 
         public String getTaskInstanceId()
