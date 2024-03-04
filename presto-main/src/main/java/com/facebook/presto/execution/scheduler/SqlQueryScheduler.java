@@ -638,7 +638,8 @@ public class SqlQueryScheduler
                     summarizeTaskInfo,
                     remoteTaskFactory,
                     splitSourceFactory,
-                    attemptId);
+                    attemptId,
+                    false);
 
             addStateChangeListeners(sectionExecution);
             attempts.add(sectionExecution);

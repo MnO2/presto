@@ -59,6 +59,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
@@ -168,12 +169,13 @@ public class SectionExecutionFactory
             boolean summarizeTaskInfo,
             RemoteTaskFactory remoteTaskFactory,
             SplitSourceFactory splitSourceFactory,
-            int attemptId)
+            int attemptId,
+            boolean eligibleForOpec)
     {
         // Only fetch a distribution once per section to ensure all stages see the same machine assignments
         Map<PartitioningHandle, NodePartitionMap> partitioningCache = new HashMap<>();
         TableWriteInfo tableWriteInfo = createTableWriteInfo(section.getPlan(), metadata, session);
-        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(section.getPlan());
+        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(section.getPlan(), eligibleForOpec);
         List<StageExecutionAndScheduler> sectionStages = createStreamingLinkedStageExecutions(
                 session,
                 locationsConsumer,
@@ -184,7 +186,8 @@ public class SectionExecutionFactory
                 summarizeTaskInfo,
                 remoteTaskFactory,
                 splitSourceFactory,
-                attemptId);
+                attemptId,
+                eligibleForOpec);
         StageExecutionAndScheduler rootStage = getLast(sectionStages);
         rootStage.getStageExecution().setOutputBuffers(outputBuffers);
         return new SectionExecution(rootStage, sectionStages);
@@ -203,7 +206,8 @@ public class SectionExecutionFactory
             boolean summarizeTaskInfo,
             RemoteTaskFactory remoteTaskFactory,
             SplitSourceFactory splitSourceFactory,
-            int attemptId)
+            int attemptId,
+            boolean eligibleForOpec)
     {
         ImmutableList.Builder<StageExecutionAndScheduler> stageExecutionAndSchedulers = ImmutableList.builder();
 
@@ -238,7 +242,8 @@ public class SectionExecutionFactory
                     summarizeTaskInfo,
                     remoteTaskFactory,
                     splitSourceFactory,
-                    attemptId);
+                    attemptId,
+                    eligibleForOpec);
             stageExecutionAndSchedulers.addAll(subTree);
             childStagesBuilder.add(getLast(subTree).getStageExecution());
         }
@@ -260,7 +265,8 @@ public class SectionExecutionFactory
                 stageExecution,
                 partitioningHandle,
                 tableWriteInfo,
-                childStageExecutions);
+                childStageExecutions,
+                eligibleForOpec);
         stageExecutionAndSchedulers.add(new StageExecutionAndScheduler(
                 stageExecution,
                 stageLinkage,
@@ -279,11 +285,12 @@ public class SectionExecutionFactory
             SqlStageExecution stageExecution,
             PartitioningHandle partitioningHandle,
             TableWriteInfo tableWriteInfo,
-            Set<SqlStageExecution> childStageExecutions)
+            Set<SqlStageExecution> childStageExecutions,
+            boolean eligibleForOpec)
     {
         Map<PlanNodeId, SplitSource> splitSources = splitSourceFactory.createSplitSources(plan.getFragment(), session, tableWriteInfo);
         int maxTasksPerStage = getMaxTasksPerStage(session);
-        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(plan);
+        Optional<Predicate<Node>> nodePredicate = getNodePoolSelectionPredicate(plan, eligibleForOpec);
         if (partitioningHandle.equals(SOURCE_DISTRIBUTION)) {
             // nodes are selected dynamically based on the constraints of the splits and the system load
             Map.Entry<PlanNodeId, SplitSource> entry = getOnlyElement(splitSources.entrySet());
@@ -407,13 +414,16 @@ public class SectionExecutionFactory
         }
     }
 
-    private Optional<Predicate<Node>> getNodePoolSelectionPredicate(StreamingSubPlan plan)
+    private Optional<Predicate<Node>> getNodePoolSelectionPredicate(StreamingSubPlan plan, boolean eligibleForOpec)
     {
         if (!isEnableWorkerIsolation || plan.getFragment().getStageExecutionDescriptor().isStageGroupedExecution()) {
             //skipping node pool based selection for grouped execution
             return Optional.empty();
         }
-        NodePoolType workerPoolType = plan.getFragment().isLeaf() ? LEAF : INTERMEDIATE;
+
+        Random random = new Random();
+        int randomNumber = random.nextInt(10);
+        NodePoolType workerPoolType = eligibleForOpec && (randomNumber == 0) ? LEAF : INTERMEDIATE;
         return Optional.of(node -> node.getPoolType().equals(workerPoolType));
     }
 

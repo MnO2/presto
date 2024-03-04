@@ -146,6 +146,7 @@ public class LegacySqlQueryScheduler
     private final AtomicBoolean scheduling = new AtomicBoolean();
 
     private final PartialResultQueryTaskTracker partialResultQueryTaskTracker;
+    private boolean eligibleForOpec;
 
     public static LegacySqlQueryScheduler createSqlQueryScheduler(
             LocationFactory locationFactory,
@@ -240,6 +241,10 @@ public class LegacySqlQueryScheduler
         this.sectionedPlan = extractStreamingSections(plan);
         this.summarizeTaskInfo = summarizeTaskInfo;
 
+        if (eligibleForOpec(this.sectionedPlan)) {
+            this.eligibleForOpec = true;
+        }
+
         OutputBufferId rootBufferId = getOnlyElement(rootOutputBuffers.getBuffers().keySet());
         List<StageExecutionAndScheduler> stageExecutions = createStageExecutions(
                 sectionExecutionFactory,
@@ -249,7 +254,8 @@ public class LegacySqlQueryScheduler
                 rootOutputBuffers,
                 remoteTaskFactory,
                 splitSourceFactory,
-                session);
+                session,
+                eligibleForOpec);
 
         this.rootStageId = Iterables.getLast(stageExecutions).getStageExecution().getStageExecutionId().getStageId();
 
@@ -335,7 +341,8 @@ public class LegacySqlQueryScheduler
             OutputBuffers outputBuffers,
             RemoteTaskFactory remoteTaskFactory,
             SplitSourceFactory splitSourceFactory,
-            Session session)
+            Session session,
+            boolean eligibleForOpec)
     {
         ImmutableList.Builder<StageExecutionAndScheduler> stages = ImmutableList.builder();
 
@@ -349,7 +356,8 @@ public class LegacySqlQueryScheduler
                     createDiscardingOutputBuffers(),
                     remoteTaskFactory,
                     splitSourceFactory,
-                    session));
+                    session,
+                    eligibleForOpec));
         }
         List<StageExecutionAndScheduler> sectionStages =
                 sectionExecutionFactory.createSectionExecutions(
@@ -361,7 +369,9 @@ public class LegacySqlQueryScheduler
                         summarizeTaskInfo,
                         remoteTaskFactory,
                         splitSourceFactory,
-                        0).getSectionStages();
+                        0,
+                        eligibleForOpec
+                        ).getSectionStages();
         stages.addAll(sectionStages);
 
         return stages.build();
@@ -546,6 +556,30 @@ public class LegacySqlQueryScheduler
         }
     }
 
+    private static long totalTableScanOutputSizeInBytes(StreamingSubPlan subPlan)
+    {
+        if (subPlan.getFragment().isLeaf()) {
+            return subPlan.getFragment().getStatsAndCosts().getStats().values().stream().mapToLong(estimate -> Math.round(estimate.getOutputSizeInBytes())).sum();
+        }
+        else {
+            return 0;
+        }
+    }
+
+    private static boolean eligibleForOpec(StreamingPlanSection section)
+    {
+        long totalTableScanOutputSizeInBytes = stream(forTree(StreamingSubPlan::getChildren).depthFirstPreOrder(section.getPlan()))
+                        .mapToLong(currentSubPlan -> {
+                            long totalRowsRead = totalTableScanOutputSizeInBytes(currentSubPlan);
+                            return totalRowsRead;
+                        })
+                        .sum();
+        long totalStages = stream(forTree(StreamingSubPlan::getChildren).depthFirstPreOrder(section.getPlan())).count();
+
+        // FIXME: hard-coded heuristics
+        return (totalTableScanOutputSizeInBytes < 10000000) && (totalStages <= 4);
+    }
+
     private List<StreamingPlanSection> getSectionsReadyForExecution()
     {
         long runningPlanSections =
@@ -663,7 +697,8 @@ public class LegacySqlQueryScheduler
                 summarizeTaskInfo,
                 remoteTaskFactory,
                 splitSourceFactory,
-                0);
+                0,
+                eligibleForOpec);
         addStateChangeListeners(sectionExecution);
         Map<StageId, StageExecutionAndScheduler> updatedStageExecutions = sectionExecution.getSectionStages().stream()
                 .collect(toImmutableMap(execution -> execution.getStageExecution().getStageExecutionId().getStageId(), identity()));
