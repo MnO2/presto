@@ -69,6 +69,12 @@ public class HttpRemoteNodeState
     }
 
     @Override
+    public void setNodeState(NodeState nodeState)
+    {
+        this.nodeState.set(Optional.of(nodeState));
+    }
+
+    @Override
     public synchronized void asyncRefresh()
     {
         Duration sinceUpdate = nanosSince(lastUpdateNanos.get());

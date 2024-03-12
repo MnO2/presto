@@ -59,6 +59,12 @@ public class ThriftRemoteNodeState
     }
 
     @Override
+    public void setNodeState(NodeState nodeState)
+    {
+        this.nodeState.set(Optional.of(nodeState));
+    }
+
+    @Override
     public void asyncRefresh()
     {
         Duration sinceUpdate = nanosSince(lastUpdateNanos.get());

@@ -87,6 +87,7 @@ public class GracefulShutdownHandler
         log.debug("Loading node status notification");
         checkState(!isLoadNodeStatusNotification, "Node status notification can be registered only once");
         this.nodeStatusNotificationManager.getNotificationProvider().registerGracefulShutdownEventListener(this::initiateShutdown);
+
         isLoadNodeStatusNotification = true;
     }
 

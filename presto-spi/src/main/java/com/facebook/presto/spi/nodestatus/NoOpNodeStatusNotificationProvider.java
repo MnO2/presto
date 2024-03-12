@@ -25,4 +25,14 @@ public class NoOpNodeStatusNotificationProvider
     public void removeGracefulShutdownEventListener(GracefulShutdownEventListener listener)
     {
     }
+
+    @Override
+    public void registerRemoteNodePreemptedEventListener(RemoteNodePreemptedEventListener listener)
+    {
+    }
+
+    @Override
+    public void removeRemoteNodePreemptedEventListener(RemoteNodePreemptedEventListener listener)
+    {
+    }
 }

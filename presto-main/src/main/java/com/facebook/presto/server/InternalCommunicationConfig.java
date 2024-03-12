@@ -18,11 +18,13 @@ import com.facebook.airlift.configuration.ConfigDescription;
 import com.facebook.airlift.configuration.ConfigSecuritySensitive;
 import com.facebook.drift.transport.netty.codec.Protocol;
 import io.airlift.units.DataSize;
+import io.airlift.units.Duration;
 
 import javax.validation.constraints.AssertTrue;
 import javax.validation.constraints.NotNull;
 
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 
@@ -50,6 +52,7 @@ public class InternalCommunicationConfig
     private String sharedSecret;
 
     private boolean internalJwtEnabled;
+    private Duration pollNodeStateDelay = new Duration(5, TimeUnit.SECONDS);
 
     public boolean isHttpsRequired()
     {
@@ -293,6 +296,18 @@ public class InternalCommunicationConfig
     public InternalCommunicationConfig setInternalJwtEnabled(boolean internalJwtEnabled)
     {
         this.internalJwtEnabled = internalJwtEnabled;
+        return this;
+    }
+
+    public Duration getPollNodeStateDelay()
+    {
+        return pollNodeStateDelay;
+    }
+
+    @Config("experimental.internal-communication.poll-node-state-delay")
+    public InternalCommunicationConfig setPollNodeStateDelay(Duration pollNodeStateDelay)
+    {
+        this.pollNodeStateDelay = pollNodeStateDelay;
         return this;
     }
 

@@ -25,6 +25,7 @@ import com.facebook.presto.connector.system.GlobalSystemConnector;
 import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.server.InternalCommunicationConfig;
 import com.facebook.presto.server.InternalCommunicationConfig.CommunicationProtocol;
+import com.facebook.presto.server.NodeStatusNotificationManager;
 import com.facebook.presto.server.thrift.ThriftServerInfoClient;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.NodePoolType;
@@ -40,6 +41,7 @@ import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.SetMultimap;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Sets.SetView;
+import io.airlift.units.Duration;
 import org.weakref.jmx.Managed;
 
 import javax.annotation.PostConstruct;
@@ -48,8 +50,11 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,7 +65,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -81,6 +85,7 @@ import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 @ThreadSafe
 public final class DiscoveryNodeManager
@@ -102,6 +107,8 @@ public final class DiscoveryNodeManager
     private final InternalNode currentNode;
     private final CommunicationProtocol protocol;
     private final boolean isMemoizeDeadNodesEnabled;
+    private final Duration pollNodeStateDelay;
+    private final NodeStatusNotificationManager nodeStatusNotificationManager;
 
     @GuardedBy("this")
     private SetMultimap<ConnectorId, InternalNode> activeNodesByConnectorId;
@@ -139,7 +146,8 @@ public final class DiscoveryNodeManager
             NodeVersion expectedNodeVersion,
             @ForNodeManager HttpClient httpClient,
             @ForNodeManager DriftClient<ThriftServerInfoClient> driftClient,
-            InternalCommunicationConfig internalCommunicationConfig)
+            InternalCommunicationConfig internalCommunicationConfig,
+            NodeStatusNotificationManager nodeStatusNotificationManager)
     {
         this.serviceSelector = requireNonNull(serviceSelector, "serviceSelector is null");
         this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
@@ -158,6 +166,39 @@ public final class DiscoveryNodeManager
                 httpsRequired);
         this.protocol = internalCommunicationConfig.getServerInfoCommunicationProtocol();
         this.isMemoizeDeadNodesEnabled = internalCommunicationConfig.isMemoizeDeadNodesEnabled();
+        this.pollNodeStateDelay = internalCommunicationConfig.getPollNodeStateDelay();
+        this.nodeStatusNotificationManager = requireNonNull(nodeStatusNotificationManager, "nodeStatusNotificationManager is null");
+        this.nodeStatusNotificationManager.getNotificationProvider().registerRemoteNodePreemptedEventListener(this::onWorkerPreempted);
+        refreshNodesInternal();
+    }
+
+    private void onWorkerPreempted(Inet6Address preemptedHostAddress)
+    {
+        log.info(String.format("Trigger onWorkerPreempted from status notification %s", preemptedHostAddress.toString()));
+
+        AllNodes allNodes = getAllNodes();
+        Set<InternalNode> aliveNodes = ImmutableSet.<InternalNode>builder()
+                .addAll(allNodes.getActiveNodes())
+                .addAll(allNodes.getShuttingDownNodes())
+                .build();
+        for (InternalNode node : aliveNodes) {
+            try {
+                String ipAddress = node.getHostAndPort().getHostText();
+                byte[] addressBytes = InetAddress.getByName(ipAddress).getAddress();
+                Inet6Address inet6Address = Inet6Address.getByAddress(ipAddress, addressBytes, 0);
+
+                if (inet6Address.equals(preemptedHostAddress)) {
+                    nodeStates.putIfAbsent(node.getNodeIdentifier(),
+                            new HttpRemoteNodeState(httpClient, uriBuilderFrom(node.getInternalUri()).appendPath("/v1/info/state").build()));
+
+                    RemoteNodeState nodeState = nodeStates.get(node.getNodeIdentifier());
+                    nodeState.setNodeState(SHUTTING_DOWN);
+                }
+            }
+            catch (UnknownHostException e) {
+                log.error(String.format("Unable to convert %s to Inet6Address", node.getHostAndPort().getHostText()));
+            }
+        }
 
         refreshNodesInternal();
     }
@@ -214,7 +255,7 @@ public final class DiscoveryNodeManager
             catch (Exception e) {
                 log.error(e, "Error polling state of nodes");
             }
-        }, 5, 5, TimeUnit.SECONDS);
+        }, 5000, pollNodeStateDelay.toMillis(), MILLISECONDS);
         pollWorkers();
     }
 
