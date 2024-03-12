@@ -26,4 +26,8 @@ public interface NodeStatusNotificationProvider
     void registerGracefulShutdownEventListener(GracefulShutdownEventListener listener);
 
     void removeGracefulShutdownEventListener(GracefulShutdownEventListener listener);
+
+    void registerRemoteNodePreemptedEventListener(RemoteNodePreemptedEventListener listener);
+
+    void removeRemoteNodePreemptedEventListener(RemoteNodePreemptedEventListener listener);
 }

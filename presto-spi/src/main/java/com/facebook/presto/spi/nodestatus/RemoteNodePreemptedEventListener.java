@@ -11,17 +11,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.metadata;
+package com.facebook.presto.spi.nodestatus;
 
-import com.facebook.presto.spi.NodeState;
+import java.net.Inet6Address;
 
-import java.util.Optional;
-
-public interface RemoteNodeState
+@FunctionalInterface
+public interface RemoteNodePreemptedEventListener
 {
-    Optional<NodeState> getNodeState();
-
-    void setNodeState(NodeState nodeState);
-
-    void asyncRefresh();
+    void onRemoteNodePreempted(Inet6Address preemptedHostAddress);
 }
