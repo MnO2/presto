@@ -52,7 +52,7 @@ public class InternalCommunicationConfig
     private String sharedSecret;
 
     private boolean internalJwtEnabled;
-    private Duration pollNodeStateDelay = new Duration(5, TimeUnit.SECONDS);
+    private Duration pollNodeStateDelay = new Duration(1, TimeUnit.SECONDS);
 
     public boolean isHttpsRequired()
     {
