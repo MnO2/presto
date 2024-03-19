@@ -23,6 +23,7 @@ import com.facebook.presto.server.thrift.ThriftTaskClient;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -52,6 +53,12 @@ public final class ThriftRpcShuffleClient
         String[] paths = location.getPath().split("/");
         this.taskId = TaskId.valueOf(paths[3]);
         this.outputBufferId = OutputBufferId.fromString(paths[5]);
+    }
+
+    @Override
+    public ListenableFuture<PageBufferClient.RequestDataResponse> headResults(long token)
+    {
+        throw new NotImplementedException();
     }
 
     @Override

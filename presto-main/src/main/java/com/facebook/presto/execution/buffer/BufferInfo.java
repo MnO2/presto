@@ -35,6 +35,7 @@ public class BufferInfo
 
     private final long pagesSent;
     private final PageBufferInfo pageBufferInfo;
+    private final boolean bufferComplete;
 
     @JsonCreator
     @ThriftConstructor
@@ -43,7 +44,8 @@ public class BufferInfo
             @JsonProperty("finished") boolean finished,
             @JsonProperty("bufferedPages") int bufferedPages,
             @JsonProperty("pagesSent") long pagesSent,
-            @JsonProperty("pageBufferInfo") PageBufferInfo pageBufferInfo)
+            @JsonProperty("pageBufferInfo") PageBufferInfo pageBufferInfo,
+            @JsonProperty("bufferComplete") boolean bufferComplete)
     {
         checkArgument(bufferedPages >= 0, "bufferedPages must be >= 0");
         checkArgument(pagesSent >= 0, "pagesSent must be >= 0");
@@ -53,6 +55,7 @@ public class BufferInfo
         this.pageBufferInfo = requireNonNull(pageBufferInfo, "pageBufferInfo is null");
         this.finished = finished;
         this.bufferedPages = bufferedPages;
+        this.bufferComplete = bufferComplete;
     }
 
     @JsonProperty
@@ -88,6 +91,13 @@ public class BufferInfo
     public PageBufferInfo getPageBufferInfo()
     {
         return pageBufferInfo;
+    }
+
+    @JsonProperty
+    @ThriftField(6)
+    public boolean getBufferComplete()
+    {
+        return bufferComplete;
     }
 
     @Override

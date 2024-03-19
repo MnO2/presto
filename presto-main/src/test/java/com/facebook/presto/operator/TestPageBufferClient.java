@@ -36,6 +36,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
@@ -484,7 +485,7 @@ public class TestPageBufferClient
         }
 
         @Override
-        public void requestComplete(PageBufferClient client)
+        public void requestComplete(PageBufferClient client, boolean success)
         {
             completedRequests.getAndIncrement();
             awaitDone();
@@ -503,6 +504,16 @@ public class TestPageBufferClient
             failedBuffers.getAndIncrement();
             failure.compareAndSet(null, cause);
             // requestComplete() will be called after this
+        }
+
+        @Override
+        public void dataSizeFetched(PageBufferClient client, Optional<DataSize> remainingBytes, boolean clientComplete)
+        {
+        }
+
+        @Override
+        public void dataSizeFailed(PageBufferClient client)
+        {
         }
 
         public void resetStats()

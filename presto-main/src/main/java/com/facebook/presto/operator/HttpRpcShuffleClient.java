@@ -37,15 +37,18 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 import static com.facebook.airlift.http.client.HttpStatus.familyForStatusCode;
 import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static com.facebook.airlift.http.client.Request.Builder.prepareDelete;
 import static com.facebook.airlift.http.client.Request.Builder.prepareGet;
+import static com.facebook.airlift.http.client.Request.Builder.prepareHead;
 import static com.facebook.airlift.http.client.ResponseHandlerUtils.propagate;
 import static com.facebook.airlift.http.client.StatusResponseHandler.createStatusResponseHandler;
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES_TYPE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_REMAINING_BYTES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_MAX_SIZE;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_NEXT_TOKEN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_TOKEN;
@@ -53,6 +56,7 @@ import static com.facebook.presto.client.PrestoHeaders.PRESTO_TASK_INSTANCE_ID;
 import static com.facebook.presto.operator.PageBufferClient.PagesResponse.createEmptyPagesResponse;
 import static com.facebook.presto.operator.PageBufferClient.PagesResponse.createPagesResponse;
 import static com.facebook.presto.spi.page.PagesSerdeUtil.readSerializedPages;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.net.HttpHeaders.CONTENT_TYPE;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -71,6 +75,16 @@ public final class HttpRpcShuffleClient
     {
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.location = requireNonNull(location, "location is null");
+    }
+
+    @Override
+    public ListenableFuture<PageBufferClient.RequestDataResponse> headResults(long token)
+    {
+        URI uri = uriBuilderFrom(location).appendPath(String.valueOf(token)).build();
+        return httpClient.executeAsync(
+                prepareHead()
+                        .setUri(uri).build(),
+                new RequestDataResponseResponseHandler());
     }
 
     @Override
@@ -121,6 +135,45 @@ public final class HttpRpcShuffleClient
             return new PageTooLargeException(throwable);
         }
         return throwable;
+    }
+
+    public static class RequestDataResponseResponseHandler
+            implements ResponseHandler<PageBufferClient.RequestDataResponse, RuntimeException>
+    {
+        @Override
+        public PageBufferClient.RequestDataResponse handleException(Request request, Exception exception)
+        {
+            throw propagate(request, exception);
+        }
+
+        @Override
+        public PageBufferClient.RequestDataResponse handle(Request request, Response response)
+        {
+            if (response.getStatusCode() == HttpStatus.NOT_FOUND.code()) {
+                return PageBufferClient.RequestDataResponse.createEmptyRequestDataResponse();
+            }
+
+            checkState(response.getStatusCode() == HttpStatus.OK.code(), "response should be OK");
+            return PageBufferClient.RequestDataResponse.createRequestDataResponse(getRemainingBytes(response), getComplete(request, response));
+        }
+
+        private static Optional<Long> getRemainingBytes(Response response)
+        {
+            String remainingBytesHeader = response.getHeader(PRESTO_BUFFER_REMAINING_BYTES);
+            if (remainingBytesHeader == null) {
+                return Optional.empty();
+            }
+            return Optional.of(Long.parseLong(remainingBytesHeader));
+        }
+
+        private static boolean getComplete(Request request, Response response)
+        {
+            String bufferComplete = response.getHeader(PRESTO_BUFFER_COMPLETE);
+            if (bufferComplete == null) {
+                throw new PageTransportErrorException(HostAddress.fromUri(request.getUri()), format("Expected %s header", PRESTO_BUFFER_COMPLETE));
+            }
+            return Boolean.parseBoolean(bufferComplete);
+        }
     }
 
     public static class PageResponseHandler

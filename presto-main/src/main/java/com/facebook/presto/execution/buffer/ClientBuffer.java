@@ -95,7 +95,8 @@ class ClientBuffer
         int bufferedPages = destroyed ? 0 : Math.max(toIntExact(pagesAdded.get() - sequenceId), 0);
 
         PageBufferInfo pageBufferInfo = new PageBufferInfo(bufferId.getId(), bufferedPages, bufferedBytes.get(), rowsAdded.get(), pagesAdded.get());
-        return new BufferInfo(bufferId, destroyed, bufferedPages, sequenceId, pageBufferInfo);
+        boolean bufferComplete = pages.isEmpty() && noMorePages;
+        return new BufferInfo(bufferId, destroyed, bufferedPages, sequenceId, pageBufferInfo, bufferComplete);
     }
 
     public boolean isDestroyed()

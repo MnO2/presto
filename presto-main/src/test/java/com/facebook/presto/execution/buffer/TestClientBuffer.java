@@ -442,7 +442,7 @@ public class TestClientBuffer
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row
-                                bufferedPages + pagesSent)));
+                                bufferedPages + pagesSent), false));
         assertFalse(buffer.isDestroyed());
     }
 
@@ -464,7 +464,7 @@ public class TestClientBuffer
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row
-                                bufferedPages + pagesSent)));
+                                bufferedPages + pagesSent), false));
         assertFalse(buffer.isDestroyed());
     }
 

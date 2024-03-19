@@ -22,6 +22,8 @@ import io.airlift.units.DataSize;
  */
 public interface RpcShuffleClient
 {
+    ListenableFuture<PageBufferClient.RequestDataResponse> headResults(long token);
+
     ListenableFuture<PagesResponse> getResults(long token, DataSize maxResponseSize);
 
     /**

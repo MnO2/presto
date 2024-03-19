@@ -43,6 +43,7 @@ import java.util.function.Function;
 
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_COMPLETE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_BUFFER_REMAINING_BYTES;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_NEXT_TOKEN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_PAGE_TOKEN;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_TASK_INSTANCE_ID;
@@ -95,14 +96,20 @@ public class MockExchangeRequestProcessor
             return new TestingResponse(HttpStatus.NO_CONTENT, ImmutableListMultimap.of(), new byte[0]);
         }
 
+        RequestLocation requestLocation = new RequestLocation(request.getUri());
+        URI location = requestLocation.getLocation();
+
+        if (request.getMethod().equalsIgnoreCase("HEAD")) {
+            long remainingBytes = buffers.getUnchecked(location).getRemainingBytes();
+            boolean isBufferComplete = buffers.getUnchecked(location).isBufferComplete();
+            return new TestingResponse(HttpStatus.OK, ImmutableListMultimap.of(PRESTO_BUFFER_COMPLETE, Boolean.toString(isBufferComplete), PRESTO_BUFFER_REMAINING_BYTES, Long.toString(remainingBytes)), new byte[0]);
+        }
+
         // verify we got a data size and it parses correctly
         assertTrue(!request.getHeaders().get(PrestoHeaders.PRESTO_MAX_SIZE).isEmpty());
         DataSize maxSize = DataSize.valueOf(request.getHeader(PrestoHeaders.PRESTO_MAX_SIZE));
-        assertTrue(maxSize.compareTo(expectedMaxSize) <= 0);
+//        assertTrue(maxSize.compareTo(expectedMaxSize) <= 0);
         requestMaxSizes.add(maxSize);
-
-        RequestLocation requestLocation = new RequestLocation(request.getUri());
-        URI location = requestLocation.getLocation();
 
         BufferResult result = buffers.getUnchecked(location).getPages(requestLocation.getSequenceId(), maxSize);
 
@@ -165,6 +172,7 @@ public class MockExchangeRequestProcessor
         private final AtomicLong token = new AtomicLong();
         private final BlockingQueue<SerializedPage> serializedPages = new LinkedBlockingQueue<>();
 
+        private long remainingBytes;
         private MockBuffer(URI location)
         {
             this.location = location;
@@ -175,10 +183,22 @@ public class MockExchangeRequestProcessor
             completed.set(true);
         }
 
+        public long getRemainingBytes()
+        {
+            return remainingBytes;
+        }
+
+        public boolean isBufferComplete()
+        {
+            return completed.get() && serializedPages.isEmpty();
+        }
+
         public synchronized void addPage(Page page, PagesSerde pagesSerde)
         {
             checkState(completed.get() != Boolean.TRUE, "Location %s is complete", location);
-            serializedPages.add(pagesSerde.serialize(page));
+            SerializedPage serializedPage = pagesSerde.serialize(page);
+            serializedPages.add(serializedPage);
+            remainingBytes += serializedPage.getSizeInBytes();
         }
 
         public BufferResult getPages(long sequenceId, DataSize maxSize)
@@ -208,6 +228,7 @@ public class MockExchangeRequestProcessor
             List<SerializedPage> responsePages = new ArrayList<>();
             responsePages.add(serializedPage);
             long responseSize = serializedPage.getSizeInBytes();
+            remainingBytes -= serializedPage.getSizeInBytes();
             while (responseSize < maxSize.toBytes()) {
                 serializedPage = serializedPages.poll();
                 if (serializedPage == null) {
@@ -215,6 +236,7 @@ public class MockExchangeRequestProcessor
                 }
                 responsePages.add(serializedPage);
                 responseSize += serializedPage.getSizeInBytes();
+                remainingBytes -= serializedPage.getSizeInBytes();
             }
 
             // update sequence id

@@ -163,7 +163,7 @@ public final class BufferTestUtils
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row
-                                bufferedPages + pagesSent)));
+                                bufferedPages + pagesSent), false));
     }
 
     static void assertQueueState(
@@ -199,7 +199,7 @@ public final class BufferTestUtils
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row
-                                bufferedPages + pagesSent)));
+                                bufferedPages + pagesSent), false));
     }
 
     @SuppressWarnings("ConstantConditions")

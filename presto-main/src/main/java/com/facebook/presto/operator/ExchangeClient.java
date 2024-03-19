@@ -40,6 +40,7 @@ import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -57,9 +58,7 @@ import static com.google.common.base.Throwables.throwIfUnchecked;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static io.airlift.slice.Slices.EMPTY_SLICE;
-import static io.airlift.units.DataSize.Unit.BYTE;
 import static java.lang.Math.max;
-import static java.lang.Math.min;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -99,7 +98,6 @@ public class ExchangeClient
 
     @GuardedBy("this")
     private final Deque<PageBufferClient> queuedClients = new LinkedList<>();
-
     private final Set<PageBufferClient> completedClients = newConcurrentHashSet();
     private final Set<PageBufferClient> removedClients = newConcurrentHashSet();
     private final LinkedBlockingDeque<SerializedPage> pageBuffer = new LinkedBlockingDeque<>();
@@ -121,6 +119,7 @@ public class ExchangeClient
 
     private final LocalMemoryContext systemMemoryContext;
     private final Executor pageBufferClientCallbackExecutor;
+    private long totalPendingBytes;
 
     // ExchangeClientStatus.mergeWith assumes all clients have the same bufferCapacity.
     // Please change that method accordingly when this assumption becomes not true.
@@ -360,31 +359,35 @@ public class ExchangeClient
             return;
         }
 
-        long neededBytes = bufferCapacity - bufferRetainedSizeInBytes;
+        long neededBytes = bufferCapacity - bufferRetainedSizeInBytes - totalPendingBytes;
         if (neededBytes <= 0) {
             return;
         }
-        long averageResponseSize = max(1, responseSizeExponentialMovingAverage.get());
-        int clientCount = (int) ((1.0 * neededBytes / averageResponseSize) * concurrentRequestMultiplier);
-        clientCount = max(clientCount, 1);
 
-        int pendingClients = allClients.size() - queuedClients.size() - completedClients.size();
-        clientCount -= pendingClients;
-
-        for (int i = 0; i < clientCount; ) {
+        int queuedClientsSize = queuedClients.size();
+        for (int i = 0; neededBytes > 0 && i < queuedClientsSize; i++) {
             PageBufferClient client = queuedClients.poll();
-            if (client == null) {
-                // no more clients available
-                return;
-            }
-
             if (removedClients.contains(client)) {
                 continue;
             }
 
-            DataSize max = new DataSize(min(averageResponseSize * 2, maxResponseSize.toBytes()), BYTE);
-            client.scheduleRequest(max);
-            i++;
+            if (!client.isClientComplete()) {
+                if (!client.getRemainingBytes().isPresent() || client.getRemainingBytes().get().toBytes() == 0) {
+                    client.requestDataSize();
+                }
+                else {
+                    checkState(client.getRemainingBytes().isPresent() && client.getRemainingBytes().get().toBytes() > 0, "remainingBytes is empty");
+                    long remainingBytes = client.getRemainingBytes().get().toBytes();
+                    long requestSize = Math.min(remainingBytes, neededBytes);
+                    neededBytes -= requestSize;
+                    totalPendingBytes += requestSize;
+                    client.scheduleRequest(new DataSize(requestSize, DataSize.Unit.BYTE));
+                }
+            }
+            else {
+                // trigger sendDelete
+                client.scheduleRequest(new DataSize(1, DataSize.Unit.BYTE));
+            }
         }
     }
 
@@ -460,11 +463,18 @@ public class ExchangeClient
         }
     }
 
-    private synchronized void requestComplete(PageBufferClient client)
+    private synchronized void requestComplete(PageBufferClient client, boolean success)
     {
         if (!queuedClients.contains(client)) {
             queuedClients.add(client);
         }
+
+        totalPendingBytes -= client.getRemainingBytes().get().toBytes();
+
+        if (success) {
+            client.clearRemainingBytes();
+        }
+
         scheduleRequestIfNecessary();
     }
 
@@ -488,6 +498,20 @@ public class ExchangeClient
             failure.compareAndSet(null, cause);
             notifyBlockedCallers();
         }
+    }
+
+    private synchronized void dataSizeFetched(PageBufferClient client, Optional<DataSize> remainingBytes, boolean clientComplete)
+    {
+        requireNonNull(client, "client is null");
+        queuedClients.add(client);
+        scheduleRequestIfNecessary();
+    }
+
+    private synchronized void dataSizeFailed(PageBufferClient client)
+    {
+        requireNonNull(client, "client is null");
+        queuedClients.add(client);
+        scheduleRequestIfNecessary();
     }
 
     private boolean isFailed()
@@ -516,10 +540,10 @@ public class ExchangeClient
         }
 
         @Override
-        public void requestComplete(PageBufferClient client)
+        public void requestComplete(PageBufferClient client, boolean success)
         {
             requireNonNull(client, "client is null");
-            ExchangeClient.this.requestComplete(client);
+            ExchangeClient.this.requestComplete(client, success);
         }
 
         @Override
@@ -535,6 +559,20 @@ public class ExchangeClient
             requireNonNull(cause, "cause is null");
 
             ExchangeClient.this.clientFailed(client, cause);
+        }
+
+        @Override
+        public void dataSizeFetched(PageBufferClient client, Optional<DataSize> remainingBytes, boolean clientComplete)
+        {
+            requireNonNull(client, "client is null");
+            ExchangeClient.this.dataSizeFetched(client, remainingBytes, clientComplete);
+        }
+
+        @Override
+        public void dataSizeFailed(PageBufferClient client)
+        {
+            requireNonNull(client, "client is null");
+            ExchangeClient.this.dataSizeFailed(client);
         }
     }
 

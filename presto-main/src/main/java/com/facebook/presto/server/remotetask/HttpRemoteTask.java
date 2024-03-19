@@ -340,7 +340,7 @@ public final class HttpRemoteTask
 
             List<BufferInfo> bufferStates = outputBuffers.getBuffers()
                     .keySet().stream()
-                    .map(outputId -> new BufferInfo(outputId, false, 0, 0, PageBufferInfo.empty()))
+                    .map(outputId -> new BufferInfo(outputId, false, 0, 0, PageBufferInfo.empty(), false))
                     .collect(toImmutableList());
 
             TaskInfo initialTask = createInitialTask(taskId, location, bufferStates, new TaskStats(DateTime.now(), null), nodeId);

@@ -1047,7 +1047,7 @@ public class TestArbitraryOutputBuffer
                                 bufferedPages,
                                 sizeOfPages(bufferedPages).toBytes(),
                                 bufferedPages + pagesSent, // every page has one row
-                                bufferedPages + pagesSent)));
+                                bufferedPages + pagesSent), false));
     }
 
     @SuppressWarnings("ConstantConditions")

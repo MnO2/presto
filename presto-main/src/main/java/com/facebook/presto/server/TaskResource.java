@@ -303,7 +303,7 @@ public class TaskResource
         return taskManager.getTaskBufferInfo(taskId, bufferId)
                 .map(bufferInfo -> Response.ok()
                         .header(PRESTO_BUFFER_REMAINING_BYTES, bufferInfo.getPageBufferInfo().getBufferedBytes())
-                        .header(PRESTO_BUFFER_COMPLETE, bufferInfo.isFinished())
+                        .header(PRESTO_BUFFER_COMPLETE, bufferInfo.getBufferComplete())
                         .build())
                 .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }

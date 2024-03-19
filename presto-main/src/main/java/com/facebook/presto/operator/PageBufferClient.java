@@ -35,6 +35,7 @@ import javax.annotation.concurrent.ThreadSafe;
 import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.concurrent.Executor;
@@ -76,11 +77,15 @@ public final class PageBufferClient
     {
         boolean addPages(PageBufferClient client, List<SerializedPage> pages);
 
-        void requestComplete(PageBufferClient client);
+        void requestComplete(PageBufferClient client, boolean success);
 
         void clientFinished(PageBufferClient client);
 
         void clientFailed(PageBufferClient client, Throwable cause);
+
+        void dataSizeFetched(PageBufferClient client, Optional<DataSize> remainingBytes, boolean clientComplete);
+
+        void dataSizeFailed(PageBufferClient client);
     }
 
     private final RpcShuffleClient resultClient;
@@ -93,7 +98,9 @@ public final class PageBufferClient
     @GuardedBy("this")
     private boolean closed;
     @GuardedBy("this")
-    private ListenableFuture<?> future;
+    private ListenableFuture<?> sendGetResultFuture;
+    @GuardedBy("this")
+    private ListenableFuture<?> sendHeadResultFuture;
     @GuardedBy("this")
     private DateTime lastUpdate = DateTime.now();
     @GuardedBy("this")
@@ -116,6 +123,7 @@ public final class PageBufferClient
     private final AtomicInteger requestsFailed = new AtomicInteger();
 
     private final Executor pageBufferClientCallbackExecutor;
+    private Optional<DataSize> remainingBytes = Optional.empty();
 
     public PageBufferClient(
             RpcShuffleClient resultClient,
@@ -156,7 +164,7 @@ public final class PageBufferClient
         if (closed) {
             state = "closed";
         }
-        else if (future != null) {
+        else if (sendGetResultFuture != null) {
             state = "running";
         }
         else if (scheduled) {
@@ -183,12 +191,12 @@ public final class PageBufferClient
                 requestsScheduled.get(),
                 requestsCompleted.get(),
                 requestsFailed.get(),
-                future == null ? "not scheduled" : "processing request");
+                sendGetResultFuture == null ? "not scheduled" : "processing request");
     }
 
     public synchronized boolean isRunning()
     {
-        return future != null;
+        return sendGetResultFuture != null;
     }
 
     @Override
@@ -201,9 +209,9 @@ public final class PageBufferClient
 
             closed = true;
 
-            future = this.future;
+            future = this.sendGetResultFuture;
 
-            this.future = null;
+            this.sendGetResultFuture = null;
 
             lastUpdate = DateTime.now();
         }
@@ -219,9 +227,97 @@ public final class PageBufferClient
         }
     }
 
+    public synchronized void requestDataSize()
+    {
+        if (closed || (sendGetResultFuture != null) || scheduled) {
+            return;
+        }
+
+        // start before scheduling to include error delay
+        backoff.startRequest();
+
+        long delayNanos = backoff.getBackoffDelayNanos();
+        scheduler.schedule(() -> {
+            try {
+                sendHeadResults();
+            }
+            catch (Throwable t) {
+                // should not happen, but be safe and fail the operator
+                clientCallback.clientFailed(PageBufferClient.this, t);
+            }
+        }, delayNanos, NANOSECONDS);
+    }
+
+    private synchronized void sendHeadResults()
+    {
+        ListenableFuture<RequestDataResponse> resultFuture = resultClient.headResults(token);
+
+        sendHeadResultFuture = resultFuture;
+        Futures.addCallback(resultFuture, new FutureCallback<RequestDataResponse>()
+        {
+            @Override
+            public void onSuccess(RequestDataResponse result)
+            {
+                Optional<Long> remainingBytesFromResult = result.getRemainingBytes();
+                if (remainingBytesFromResult.isPresent()) {
+                    remainingBytes = Optional.of(new DataSize(remainingBytesFromResult.get(), DataSize.Unit.BYTE));
+                }
+                else {
+                    remainingBytes = Optional.empty();
+                }
+
+                synchronized (PageBufferClient.this) {
+                    // client is complete, acknowledge it by sending it a delete in the next request
+                    if (result.getClientComplete()) {
+                        completed = true;
+                    }
+                    if (sendHeadResultFuture == resultFuture) {
+                        sendHeadResultFuture = null;
+                    }
+                }
+
+                clientCallback.dataSizeFetched(PageBufferClient.this, remainingBytes, result.getClientComplete());
+            }
+
+            @Override
+            public void onFailure(Throwable t)
+            {
+                checkNotHoldsLock(this);
+
+                log.error(t, "Request to head %s failed", location);
+                if (!(t instanceof PrestoException) && backoff.failure()) {
+                    String message = format("Error closing remote buffer (%s - %s failures, failure duration %s, total failed request time %s)",
+                            location,
+                            backoff.getFailureCount(),
+                            backoff.getFailureDuration().convertTo(SECONDS),
+                            backoff.getFailureRequestTimeTotal().convertTo(SECONDS));
+                    t = new PrestoException(REMOTE_BUFFER_CLOSE_FAILED, message, t);
+                }
+                handleFailure(t, resultFuture);
+
+                clientCallback.dataSizeFailed(PageBufferClient.this);
+            }
+        }, pageBufferClientCallbackExecutor);
+    }
+
+    public Optional<DataSize> getRemainingBytes()
+    {
+        return remainingBytes;
+    }
+
+    public void clearRemainingBytes()
+    {
+        remainingBytes = Optional.empty();
+    }
+
+    public boolean isClientComplete()
+    {
+        return completed;
+    }
+
     public synchronized void scheduleRequest(DataSize maxResponseSize)
     {
-        if (closed || (future != null) || scheduled) {
+        if (closed || (sendGetResultFuture != null) || scheduled) {
             return;
         }
         scheduled = true;
@@ -247,7 +343,7 @@ public final class PageBufferClient
     private synchronized void initiateRequest(DataSize maxResponseSize)
     {
         scheduled = false;
-        if (closed || (future != null)) {
+        if (closed || (sendGetResultFuture != null)) {
             return;
         }
 
@@ -267,7 +363,7 @@ public final class PageBufferClient
 
         ListenableFuture<PagesResponse> resultFuture = resultClient.getResults(token, maxResponseSize);
 
-        future = resultFuture;
+        sendGetResultFuture = resultFuture;
         Futures.addCallback(resultFuture, new FutureCallback<PagesResponse>()
         {
             @Override
@@ -346,12 +442,12 @@ public final class PageBufferClient
                     if (result.isClientComplete()) {
                         completed = true;
                     }
-                    if (future == resultFuture) {
-                        future = null;
+                    if (sendGetResultFuture == resultFuture) {
+                        sendGetResultFuture = null;
                     }
                     lastUpdate = DateTime.now();
                 }
-                clientCallback.requestComplete(PageBufferClient.this);
+                clientCallback.requestComplete(PageBufferClient.this, true);
             }
 
             @Override
@@ -378,7 +474,7 @@ public final class PageBufferClient
     private synchronized void sendDelete()
     {
         ListenableFuture<?> resultFuture = resultClient.abortResults();
-        future = resultFuture;
+        sendGetResultFuture = resultFuture;
         Futures.addCallback(resultFuture, new FutureCallback<Object>()
         {
             @Override
@@ -388,8 +484,8 @@ public final class PageBufferClient
                 backoff.success();
                 synchronized (PageBufferClient.this) {
                     closed = true;
-                    if (future == resultFuture) {
-                        future = null;
+                    if (sendGetResultFuture == resultFuture) {
+                        sendGetResultFuture = null;
                     }
                     lastUpdate = DateTime.now();
                 }
@@ -434,12 +530,12 @@ public final class PageBufferClient
         }
 
         synchronized (PageBufferClient.this) {
-            if (future == expectedFuture) {
-                future = null;
+            if (sendGetResultFuture == expectedFuture) {
+                sendGetResultFuture = null;
             }
             lastUpdate = DateTime.now();
         }
-        clientCallback.requestComplete(PageBufferClient.this);
+        clientCallback.requestComplete(PageBufferClient.this, false);
     }
 
     @Override
@@ -475,7 +571,7 @@ public final class PageBufferClient
             if (closed) {
                 state = "CLOSED";
             }
-            else if (future != null) {
+            else if (sendGetResultFuture != null) {
                 state = "RUNNING";
             }
             else {
@@ -486,6 +582,37 @@ public final class PageBufferClient
                 .add("location", location)
                 .addValue(state)
                 .toString();
+    }
+
+    public static class RequestDataResponse
+    {
+        public static PageBufferClient.RequestDataResponse createRequestDataResponse(Optional<Long> remainingBytes, boolean clientComplete)
+        {
+            return new RequestDataResponse(remainingBytes, clientComplete);
+        }
+
+        public static PageBufferClient.RequestDataResponse createEmptyRequestDataResponse()
+        {
+            return new RequestDataResponse(Optional.empty(), false);
+        }
+        private final Optional<Long> remainingBytes;
+        private final boolean clientComplete;
+
+        private RequestDataResponse(Optional<Long> remainingBytes, boolean clientComplete)
+        {
+            this.remainingBytes = remainingBytes;
+            this.clientComplete = clientComplete;
+        }
+
+        public Optional<Long> getRemainingBytes()
+        {
+            return remainingBytes;
+        }
+
+        public boolean getClientComplete()
+        {
+            return clientComplete;
+        }
     }
 
     public static class PagesResponse
